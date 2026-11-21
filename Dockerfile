@@ -4,7 +4,7 @@ FROM golang:${GO_VERSION} AS build
 WORKDIR /src
 
 # Dependencies first: this layer is cached until go.mod/go.sum change.
-COPY go.mod go.sum* ./
+COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
