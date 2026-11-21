@@ -1,6 +1,6 @@
 # foo
 
-[![CI](https://github.com/peczenyj/foo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/peczenyj/foo/actions/workflows/ci.yml)
+[![CI](https://github.com/peczenyj/foo/actions/workflows/ci.yml/badge.svg)](https://github.com/peczenyj/foo/actions/workflows/ci.yml)
 [![Latest tag](https://img.shields.io/github/v/tag/peczenyj/foo?sort=semver)](https://github.com/peczenyj/foo/tags)
 [![Go 1.27](https://img.shields.io/badge/go-1.27-00ADD8?logo=go)](https://go.dev/doc/go1.27)
 [![codecov](https://codecov.io/gh/peczenyj/foo/graph/badge.svg)](https://codecov.io/gh/peczenyj/foo)
@@ -86,6 +86,12 @@ All Go tests use [testify](https://github.com/stretchr/testify).
 
 After changing the `Fooer` interface, run `make mocks` and commit the result:
 CI fails when the mocks are stale.
+
+### Branches
+
+`devel` is the default branch: merge requests target it. `main` holds
+releases only; it is protected and changes reach it through a pull request
+from `devel`. Release tags (`v*`) are cut on `main`.
 
 ### Changelog
 

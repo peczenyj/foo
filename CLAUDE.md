@@ -22,6 +22,7 @@ The layout and conventions mirror `github.com/peczenyj/go-fizzbuzz`; when in dou
 
 ## Conventions
 
+- Branches: `devel` is the default branch and the target of feature PRs; `main` is release-only and protected (PRs from `devel`, CI must pass). Never push to `main` directly.
 - Tests use testify (`require` when the test can't continue, `assert` otherwise), call `t.Parallel()`, and never bind fixed ports.
 - Imports are grouped std / third-party / `github.com/peczenyj/foo` (gci); `make fmt` fixes them.
 - `CHANGELOG.md` is append-only: add bullets at the end, under `## [Unreleased]` (the last section). `.gitattributes` sets `merge=union` on it.

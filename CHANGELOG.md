@@ -22,3 +22,4 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - `make vendor` vendors the dependencies locally; `vendor/` is never committed.
 - README badges: CI status, latest tag and Go version.
 - Test coverage uploaded to Codecov from CI (Go 1.27 job), with a README badge.
+- Branches: `devel` is the default branch, `main` is protected and holds releases; CI runs on both.
