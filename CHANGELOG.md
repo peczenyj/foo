@@ -28,7 +28,7 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - Coverage leaves out the generated mocks (`make cover`, CI and `codecov.yml`).
 - `make task` (generate, tidy, fix, format, then ci) to run before committing; `make ci` runs every check read-only, as GitHub CI does; plus `make generate`, `make lint-fix` and `make mod-check`. CI now checks that go.mod/go.sum are tidy.
 - `make check-tools`: the lint and format targets stop with the install link if golangci-lint is missing, and warn when its version differs from the one CI pins (2.15.0).
-- Tests run through gotestsum (a Go tool, pinned in `tools/go.mod`): `make test` and `make cover` use it, and CI uses its `github-actions` format.
+- Tests run through gotestsum (pinned in `go.mod` as a tool): `make test` and `make cover` use it, and CI uses its `github-actions` format.
 - `BenchmarkAPI_GetFoo` and `make bench` (benchstat summary of time, B/op and allocs/op), and `make bench-profile`; neither `make task`, `make ci` nor CI runs benchmarks.
 - `make bench-compare BASE=<ref>` compares benchmarks before and after a change with benchstat.
 - Test layers named for what they test: the in-process test with the real `Fooer` is a component test (`component_test.go`); `make test-integration` runs `//go:build integration` tests (an example that skips for now), and the hurl suite runs with `make test-functional`.
@@ -36,4 +36,3 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - Mocks live in the root `mocks/` folder, one package per mocked package (`foomock.Fooer`), configured in `.mockery.yaml`.
 - Agent instructions live in `AGENTS.md`, shared by AI coding tools; `CLAUDE.md` only imports it (`@AGENTS.md`).
 - Stricter linting: 61 linters on top of the standard set, grouped by purpose (HTTP and context, errors, slog, testify, tests, modern Go, style), with line length, magic numbers, function length, blank-line style and interface parameter names. Config errors are now sentinel errors, so every invalid value reads `must be ...`.
-- Developer tools (mockery, gotestsum, benchstat) are pinned in their own module, `tools/go.mod`, and run through `scripts/tool.sh`: the service's `go.mod` lists only testify, Docker builds don't download the tools, and tool upgrades don't touch the service's dependencies.

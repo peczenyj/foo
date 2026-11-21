@@ -11,14 +11,10 @@ REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION_FLAGS := -X main.version=$(VERSION) -X main.revision=$(REVISION)
 LDFLAGS       := -s -w $(VERSION_FLAGS)
 COVERPROFILE  ?= coverage.out
-# Developer tools (mockery, gotestsum, benchstat) are pinned in their own
-# module, tools/go.mod, so their dependencies stay out of the service's
-# go.mod. scripts/tool.sh builds one there and runs it from here.
-GOTOOL        := GO=$(GO) scripts/tool.sh
-# Tests run through gotestsum; flags after -- go to go test.
-# Formats: pkgname (default), testname, dots, github-actions.
+# Tests run through gotestsum (a go tool, pinned in go.mod); flags after --
+# go to go test. Formats: pkgname (default), testname, dots, github-actions.
 GOTESTSUM_FORMAT ?= pkgname
-GOTESTSUM      = $(GOTOOL) gotestsum --format $(GOTESTSUM_FORMAT) --
+GOTESTSUM      = $(GO) tool gotestsum --format $(GOTESTSUM_FORMAT) --
 # Benchmarks: BENCH filters by name; BENCH_COUNT repeats each one so that
 # benchstat can report mean ± variation instead of a single noisy run.
 # Profiles need a single package: BENCH_PKG.
@@ -78,7 +74,7 @@ cover: ## Run tests with a coverage summary (mocks excluded)
 
 bench: ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT, summarised by benchstat into bench.out
 	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -count=$(BENCH_COUNT) ./... > bench.out || { cat bench.out; exit 1; }
-	$(GOTOOL) benchstat bench.out
+	$(GO) tool benchstat bench.out
 
 bench-compare: ## Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
 	BENCH='$(BENCH)' BENCH_COUNT=$(BENCH_COUNT) scripts/bench-compare.sh $(BASE)
@@ -102,11 +98,9 @@ fmt: check-tools ## Format the code (gofumpt + gci)
 fmt-check: check-tools ## Fail if any file is not formatted
 	$(GOLANGCI_LINT) fmt --diff ./...
 
-mod-check: ## Fail if go.mod/go.sum (service and tools/) need tidying (read-only), then verify
+mod-check: ## Fail if go.mod/go.sum need tidying (read-only), then verify
 	$(GO) mod tidy -diff
 	$(GO) mod verify
-	$(GO) -C tools mod tidy -diff
-	$(GO) -C tools mod verify
 
 test-functional: ## Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
 	scripts/hurl.sh
@@ -115,11 +109,10 @@ test-integration: ## Integration tests (TestIntegration_*, build tag integration
 	$(GOTESTSUM) -race -count=1 -tags integration -run '^TestIntegration' ./...
 
 mocks: ## Regenerate mocks/ with mockery (.mockery.yaml)
-	$(GOTOOL) mockery
+	$(GO) tool mockery
 
-tidy: ## go mod tidy + verify, for the service and tools/
+tidy: ## go mod tidy + verify
 	$(GO) mod tidy && $(GO) mod verify
-	$(GO) -C tools mod tidy && $(GO) -C tools mod verify
 
 vendor: ## go mod tidy + vendor + verify (vendor/ is git-ignored)
 	$(GO) mod tidy && $(GO) mod vendor && $(GO) mod verify

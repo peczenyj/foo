@@ -48,5 +48,4 @@ run . bench.out
 grep -q '^Benchmark' bench-base.out ||
   echo "warning: $base has no benchmarks matching '$bench': nothing to compare against" >&2
 
-# benchstat is pinned in the tools module (tools/go.mod).
-scripts/tool.sh benchstat "$base=bench-base.out" "working-tree=bench.out"
+go tool benchstat "$base=bench-base.out" "working-tree=bench.out"

@@ -67,18 +67,18 @@ invalid value is reported at startup, and the server exits with status 2.
   lint-fix     go fix + golangci-lint --fix (edits files)
   fmt          Format the code (gofumpt + gci)
   fmt-check    Fail if any file is not formatted
-  mod-check    Fail if go.mod/go.sum (service and tools/) need tidying (read-only), then verify
+  mod-check    Fail if go.mod/go.sum need tidying (read-only), then verify
   test-functional Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
   test-integration Integration tests (TestIntegration_*, build tag integration; may need Docker)
   mocks        Regenerate mocks/ with mockery (.mockery.yaml)
-  tidy         go mod tidy + verify, for the service and tools/
+  tidy         go mod tidy + verify
   vendor       go mod tidy + vendor + verify (vendor/ is git-ignored)
   docker       Build the Docker image
   clean        Remove build artefacts
 ```
 
 Before committing, run `make task`: it regenerates code and mocks, tidies
-`go.mod` and `tools/go.mod`, applies `go fix` and the linters' fixes, formats, then runs
+`go.mod`, applies `go fix` and the linters' fixes, formats, then runs
 `make ci`. `make ci` only checks (it never edits a file) and runs the same
 checks as GitHub CI, so a green `make task` means a green CI.
 
@@ -86,13 +86,10 @@ Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/docs/welcome/
 v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker. The lint
 and format targets run `make check-tools` first: it stops with the install
 link if golangci-lint is missing, and warns if your version differs from
-CI's. [mockery](https://vektra.github.io/mockery/),
-[gotestsum](https://github.com/gotestyourself/gotestsum) and benchstat are
-pinned as Go tools in their own module, `tools/go.mod`, so the service's
-`go.mod` lists only what the service uses; nothing to install. The Makefile
-runs them through `scripts/tool.sh` (e.g. `scripts/tool.sh gotestsum -- -run
-TestAPI ./internal/api/`). Tests run through gotestsum:
-`make test GOTESTSUM_FORMAT=testname` lists every test.
+CI's. [mockery](https://vektra.github.io/mockery/) and
+[gotestsum](https://github.com/gotestyourself/gotestsum) are pinned in
+`go.mod` as tools and run with `go tool`; nothing to install. Tests run
+through gotestsum: `make test GOTESTSUM_FORMAT=testname` lists every test.
 
 ### Tests
 
@@ -124,8 +121,8 @@ All Go tests use [testify](https://github.com/stretchr/testify).
 
 - `make bench` runs every benchmark `BENCH_COUNT` times (6) with `-benchmem`
   and summarises time, bytes and allocations per operation with
-  [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) (pinned
-  in `tools/go.mod`). A single run is noise; the `±` tells you how much to trust
+  [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) (a
+  `go tool`). A single run is noise; the `±` tells you how much to trust
   the number.
 - `make bench-compare` answers "did my change make it faster or slower?": it
   benchmarks `BASE` (default `devel`, checked out in a temporary git
