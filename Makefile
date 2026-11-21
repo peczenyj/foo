@@ -6,7 +6,7 @@ REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 LDFLAGS       := -s -w -X main.version=$(VERSION) -X main.revision=$(REVISION)
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test cover lint fmt fmt-check mocks hurl tidy vendor clean
+.PHONY: help build run test cover lint fmt fmt-check mocks hurl tidy vendor docker clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-10s %s\n",$$1,$$2}'
@@ -45,6 +45,9 @@ tidy: ## go mod tidy + verify
 
 vendor: ## go mod tidy + vendor + verify (vendor/ is git-ignored)
 	$(GO) mod tidy && $(GO) mod vendor && $(GO) mod verify
+
+docker: ## Build the Docker image
+	docker build --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) --build-arg CREATED=$$(date -u +%Y-%m-%dT%H:%M:%SZ) -t foo:$(VERSION) .
 
 clean: ## Remove build artefacts
 	rm -rf bin coverage.out

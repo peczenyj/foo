@@ -1,0 +1,22 @@
+# Changelog
+
+All notable changes to this project are documented here, and this project
+adheres to [Semantic Versioning](https://semver.org/).
+
+This file is append-only: every merge request adds its bullets at the end,
+under `## [Unreleased]`, which is always the last section. Releases are listed
+oldest first; to release, rename `[Unreleased]` to the version and date, then
+open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
+`merge=union`, so two merge requests appending at the same time don't conflict.
+
+## [Unreleased]
+
+- `GET /foo` replies `{"message":"bar"}`; other paths and methods get the
+  standard 404/405 status, with no JSON body.
+- `GET /healthz` for liveness checks.
+- `Fooer` interface, with a mockery-generated mock (`make mocks`) for tests.
+- Host, port, log level (`debug` for debug mode) and log format (`json`) set by
+  flag or `FOO_*` environment variable.
+- hurl suite (`make hurl`), linters and formatters through golangci-lint
+  (`make lint`, `make fmt`, `make fmt-check`), Docker image and CI.
+- `make vendor` vendors the dependencies locally; `vendor/` is never committed.
