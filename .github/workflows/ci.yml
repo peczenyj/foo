@@ -63,8 +63,7 @@ jobs:
         run: make cover COVERPROFILE=coverage.txt GOTESTSUM_FORMAT=github-actions
 
       # One iteration each: keeps the benchmarks compiling and running.
-      # Timings from shared runners are too noisy to judge; allocations are
-      # guarded by TestAPI_GetFoo_allocation_budget instead.
+      # Timings from shared runners are too noisy to judge.
       - name: Benchmarks (smoke)
         run: make bench-smoke
 

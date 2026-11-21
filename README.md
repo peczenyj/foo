@@ -60,6 +60,7 @@ invalid value is reported at startup, and the server exits with status 2.
   test         Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
   cover        Run tests with a coverage summary (mocks excluded)
   bench        Benchmarks (time, B/op, allocs/op) x BENCH_COUNT, summarised by benchstat into bench.out
+  bench-compare Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
   bench-smoke  Run every benchmark once: they compile and run (CI; timings not judged)
   bench-profile CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
   lint         go vet + golangci-lint linters
@@ -106,26 +107,22 @@ All Go tests use [testify](https://github.com/stretchr/testify).
 ### Benchmarks
 
 `BenchmarkAPI_GetFoo` measures the `GET /foo` hot path: routing, the real
-`Fooer` and JSON encoding. `make bench` runs every benchmark `BENCH_COUNT`
-times (6) with `-benchmem` and summarises time, bytes and allocations per
-operation with [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat)
-(a `go tool`): a single run is noise, the `±` tells you how much to trust
-the number.
+`Fooer` and JSON encoding. Benchmarks are read by people, not judged by CI:
 
-To compare a change, keep the baseline and let benchstat test the delta:
+- `make bench` runs every benchmark `BENCH_COUNT` times (6) with `-benchmem`
+  and summarises time, bytes and allocations per operation with
+  [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) (a
+  `go tool`). A single run is noise; the `±` tells you how much to trust
+  the number.
+- `make bench-compare` answers "did my change make it faster or slower?": it
+  benchmarks `BASE` (default `devel`, checked out in a temporary git
+  worktree) and your working tree, uncommitted changes included, then
+  benchstat prints the difference and whether it is significant (`~` means
+  no significant change). `BENCH=GetFoo` narrows it to one benchmark.
+- `make bench-profile` writes CPU and memory profiles for `go tool pprof`.
 
-```sh
-git switch devel && make bench && mv bench.out old.out
-git switch -    && make bench
-go tool benchstat old.out bench.out
-```
-
-`make bench-profile` writes CPU and memory profiles (`go tool pprof`) to see
-where the time and allocations go. CI only runs each benchmark once
-(`make bench-smoke`): shared runners are too noisy to judge timings.
-Allocations, which are deterministic, are enforced by a normal test instead:
-`TestAPI_GetFoo_allocation_budget` fails when `GET /foo` allocates more than
-its budget.
+CI only runs each benchmark once (`make bench-smoke`) so they keep compiling
+and running; shared runners are too noisy to judge timings.
 
 After changing the `Fooer` interface, run `make mocks` and commit the result:
 CI fails when the mocks are stale.

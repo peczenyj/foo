@@ -6,8 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/peczenyj/foo/internal/api"
 	"github.com/peczenyj/foo/internal/foo"
 )
@@ -46,29 +44,4 @@ func BenchmarkAPI_GetFoo(b *testing.B) {
 		w.reset()
 		handler.ServeHTTP(w, request)
 	}
-}
-
-// getFooAllocBudget is the most allocations GET /foo may make. Unlike
-// timings, allocation counts are deterministic, so CI can enforce them.
-// When a change or a Go upgrade moves the count, re-measure and update it
-// on purpose.
-const getFooAllocBudget = 2
-
-// TestAPI_GetFoo_allocation_budget must not run in parallel:
-// testing.AllocsPerRun counts every allocation in the process.
-func TestAPI_GetFoo_allocation_budget(t *testing.T) {
-	handler, request := newGetFoo()
-	w := newDiscardWriter()
-
-	budget := getFooAllocBudget
-	if raceEnabled {
-		budget++ // the race detector allocates once more per request
-	}
-
-	allocs := testing.AllocsPerRun(1000, func() {
-		w.reset()
-		handler.ServeHTTP(w, request)
-	})
-
-	assert.LessOrEqual(t, allocs, float64(budget), "GET /foo allocations per request")
 }

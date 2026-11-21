@@ -21,6 +21,8 @@ GOTESTSUM      = $(GO) tool gotestsum --format $(GOTESTSUM_FORMAT) --
 BENCH         ?= .
 BENCH_COUNT   ?= 6
 BENCH_PKG     ?= ./internal/api
+# bench-compare: the git ref to compare the working tree against.
+BASE          ?= devel
 # Coverage is measured on our code only: generated mocks are left out.
 COVER_PKGS     = $(shell $(GO) list ./... | grep -v '/mocks$$')
 # Steps run in sequence, never as prerequisites: under make -j, prerequisites
@@ -28,7 +30,7 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '/mocks$$')
 STEP          := $(MAKE) --no-print-directory
 
 .DEFAULT_GOAL := help
-.PHONY: help task ci generate check-tools build build-debug run test cover bench bench-smoke bench-profile lint lint-fix fmt fmt-check mod-check mocks hurl tidy vendor docker clean
+.PHONY: help task ci generate check-tools build build-debug run test cover bench bench-compare bench-smoke bench-profile lint lint-fix fmt fmt-check mod-check mocks hurl tidy vendor docker clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-12s %s\n",$$1,$$2}'
@@ -82,6 +84,9 @@ bench: ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT, summarised by benchs
 	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -count=$(BENCH_COUNT) ./... > bench.out || { cat bench.out; exit 1; }
 	$(GO) tool benchstat bench.out
 
+bench-compare: ## Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
+	BENCH='$(BENCH)' BENCH_COUNT=$(BENCH_COUNT) scripts/bench-compare.sh $(BASE)
+
 bench-smoke: ## Run every benchmark once: they compile and run (CI; timings not judged)
 	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...
 
@@ -124,4 +129,4 @@ docker: ## Build the Docker image
 	docker build --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) --build-arg CREATED=$$(date -u +%Y-%m-%dT%H:%M:%SZ) -t foo:$(VERSION) .
 
 clean: ## Remove build artefacts
-	rm -rf bin coverage.out bench.out bench.test cpu.out mem.out
+	rm -rf bin coverage.out bench.out bench-base.out bench.test cpu.out mem.out
