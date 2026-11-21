@@ -30,4 +30,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Tests use testify (`require` when the test can't continue, `assert` otherwise), call `t.Parallel()`, and never bind fixed ports.
 - Imports are grouped std / third-party / `github.com/peczenyj/foo` (gci); `make fmt` fixes them.
 - `CHANGELOG.md` is append-only: add bullets at the end, under `## [Unreleased]` (the last section). `.gitattributes` sets `merge=union` on it.
-- Design and plan docs live in `docs/superpowers/`.
+- `docs/superpowers/` (design specs, plans) and hidden `.*.md` notes are git-ignored: local working docs, never committed.

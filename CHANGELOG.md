@@ -32,3 +32,4 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - `BenchmarkAPI_GetFoo` and `make bench` (benchstat summary of time, B/op and allocs/op), `make bench-profile` and `make bench-smoke` (in `make ci` and CI).
 - `make bench-compare BASE=<ref>` compares benchmarks before and after a change with benchstat.
 - Test layers named for what they test: the in-process test with the real `Fooer` is a component test (`component_test.go`); `make test-integration` runs `//go:build integration` tests (an example that skips for now), and the hurl suite runs with `make test-functional`.
+- `.gitignore` covers editors, backups, build directories, env files, hidden notes, working docs (`docs/superpowers/`) and the local files of AI coding tools.
