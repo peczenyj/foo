@@ -58,7 +58,7 @@ invalid value is reported at startup, and the server exits with status 2.
   build        Build the server binary into bin/
   build-debug  Build bin/foo-debug with debug symbols, no optimizations (for dlv)
   run          Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
-  test         Run all tests with the race detector
+  test         Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
   cover        Run tests with a coverage summary (mocks excluded)
   lint         go vet + golangci-lint linters
   lint-fix     go fix + golangci-lint --fix (edits files)
@@ -82,8 +82,10 @@ Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/docs/welcome/
 v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker. The lint
 and format targets run `make check-tools` first: it stops with the install
 link if golangci-lint is missing, and warns if your version differs from
-CI's. mockery is pinned in `go.mod` as a tool and runs with
-`go tool mockery`; nothing to install.
+CI's. [mockery](https://vektra.github.io/mockery/) and
+[gotestsum](https://github.com/gotestyourself/gotestsum) are pinned in
+`go.mod` as tools and run with `go tool`; nothing to install. Tests run
+through gotestsum: `make test GOTESTSUM_FORMAT=testname` lists every test.
 
 ### Tests
 

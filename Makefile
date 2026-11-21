@@ -11,6 +11,10 @@ REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION_FLAGS := -X main.version=$(VERSION) -X main.revision=$(REVISION)
 LDFLAGS       := -s -w $(VERSION_FLAGS)
 COVERPROFILE  ?= coverage.out
+# Tests run through gotestsum (a go tool, pinned in go.mod); flags after --
+# go to go test. Formats: pkgname (default), testname, dots, github-actions.
+GOTESTSUM_FORMAT ?= pkgname
+GOTESTSUM      = $(GO) tool gotestsum --format $(GOTESTSUM_FORMAT) --
 # Coverage is measured on our code only: generated mocks are left out.
 COVER_PKGS     = $(shell $(GO) list ./... | grep -v '/mocks$$')
 # Steps run in sequence, never as prerequisites: under make -j, prerequisites
@@ -60,11 +64,11 @@ build-debug: ## Build bin/foo-debug with debug symbols, no optimizations (for dl
 run: ## Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
 	$(GO) run ./cmd/server $(ARGS)
 
-test: ## Run all tests with the race detector
-	$(GO) test -race -count=1 ./...
+test: ## Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
+	$(GOTESTSUM) -race -count=1 ./...
 
 cover: ## Run tests with a coverage summary (mocks excluded)
-	$(GO) test -race -covermode=atomic -coverprofile=$(COVERPROFILE) $(COVER_PKGS)
+	$(GOTESTSUM) -race -covermode=atomic -coverprofile=$(COVERPROFILE) $(COVER_PKGS)
 	$(GO) tool cover -func=$(COVERPROFILE) | tail -1
 
 lint: check-tools ## go vet + golangci-lint linters

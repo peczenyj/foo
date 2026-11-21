@@ -28,3 +28,4 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - Coverage leaves out the generated mocks (`make cover`, CI and `codecov.yml`).
 - `make task` (generate, tidy, fix, format, then ci) to run before committing; `make ci` runs every check read-only, as GitHub CI does; plus `make generate`, `make lint-fix` and `make mod-check`. CI now checks that go.mod/go.sum are tidy.
 - `make check-tools`: the lint and format targets stop with the install link if golangci-lint is missing, and warn when its version differs from the one CI pins (2.15.0).
+- Tests run through gotestsum (pinned in `go.mod` as a tool): `make test` and `make cover` use it, and CI uses its `github-actions` format.
