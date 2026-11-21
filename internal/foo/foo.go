@@ -12,9 +12,15 @@ type Fooer interface {
 	Foo(ctx context.Context) (string, error)
 }
 
-// Bar is the real Fooer: it always answers "bar". Use it as a pointer,
-// &Bar{}: only *Bar implements Fooer.
+// Bar is the real Fooer: it always answers "bar". Create it with New.
 type Bar struct{}
+
+// New returns the real Fooer. Dependencies a real implementation needs
+// (clients, settings) would be its parameters, so callers build a Bar in
+// one place only.
+func New() *Bar {
+	return &Bar{}
+}
 
 // Foo implements Fooer.
 func (*Bar) Foo(context.Context) (string, error) {

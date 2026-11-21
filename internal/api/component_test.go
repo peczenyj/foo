@@ -22,7 +22,7 @@ import (
 func TestAPI_component(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(api.New(&foo.Bar{}, slog.New(slog.DiscardHandler)))
+	srv := httptest.NewServer(api.New(foo.New(), slog.New(slog.DiscardHandler)))
 	t.Cleanup(srv.Close)
 
 	t.Run("GET /foo replies bar", func(t *testing.T) {
