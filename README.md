@@ -52,7 +52,7 @@ invalid value is reported at startup, and the server exits with status 2.
 ```text
   help         Show available targets
   task         Before a commit: generate, tidy, fix, format, then run ci (edits files)
-  ci           All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
+  ci           All checks, read-only: mod-check, fmt-check, lint, cover, bench-smoke (same as GitHub CI)
   generate     go generate ./... + regenerate mocks
   check-tools  Fail with install instructions if golangci-lint is missing
   build        Build the server binary into bin/
@@ -60,6 +60,9 @@ invalid value is reported at startup, and the server exits with status 2.
   run          Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
   test         Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
   cover        Run tests with a coverage summary (mocks excluded)
+  bench        Benchmarks (time, B/op, allocs/op) x BENCH_COUNT, summarised by benchstat into bench.out
+  bench-smoke  Run every benchmark once: they compile and run (CI; timings not judged)
+  bench-profile CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
   lint         go vet + golangci-lint linters
   lint-fix     go fix + golangci-lint --fix (edits files)
   fmt          Format the code (gofumpt + gci)
@@ -100,6 +103,30 @@ Three layers, each catching what the one before can't:
    `scripts/hurl.sh http://host:port` tests a server that is already running.
 
 All Go tests use [testify](https://github.com/stretchr/testify).
+
+### Benchmarks
+
+`BenchmarkAPI_GetFoo` measures the `GET /foo` hot path: routing, the real
+`Fooer` and JSON encoding. `make bench` runs every benchmark `BENCH_COUNT`
+times (6) with `-benchmem` and summarises time, bytes and allocations per
+operation with [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat)
+(a `go tool`): a single run is noise, the `±` tells you how much to trust
+the number.
+
+To compare a change, keep the baseline and let benchstat test the delta:
+
+```sh
+git switch devel && make bench && mv bench.out old.out
+git switch -    && make bench
+go tool benchstat old.out bench.out
+```
+
+`make bench-profile` writes CPU and memory profiles (`go tool pprof`) to see
+where the time and allocations go. CI only runs each benchmark once
+(`make bench-smoke`): shared runners are too noisy to judge timings.
+Allocations, which are deterministic, are enforced by a normal test instead:
+`TestAPI_GetFoo_allocation_budget` fails when `GET /foo` allocates more than
+its budget.
 
 After changing the `Fooer` interface, run `make mocks` and commit the result:
 CI fails when the mocks are stale.

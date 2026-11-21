@@ -15,6 +15,12 @@ COVERPROFILE  ?= coverage.out
 # go to go test. Formats: pkgname (default), testname, dots, github-actions.
 GOTESTSUM_FORMAT ?= pkgname
 GOTESTSUM      = $(GO) tool gotestsum --format $(GOTESTSUM_FORMAT) --
+# Benchmarks: BENCH filters by name; BENCH_COUNT repeats each one so that
+# benchstat can report mean ± variation instead of a single noisy run.
+# Profiles need a single package: BENCH_PKG.
+BENCH         ?= .
+BENCH_COUNT   ?= 6
+BENCH_PKG     ?= ./internal/api
 # Coverage is measured on our code only: generated mocks are left out.
 COVER_PKGS     = $(shell $(GO) list ./... | grep -v '/mocks$$')
 # Steps run in sequence, never as prerequisites: under make -j, prerequisites
@@ -22,7 +28,7 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '/mocks$$')
 STEP          := $(MAKE) --no-print-directory
 
 .DEFAULT_GOAL := help
-.PHONY: help task ci generate check-tools build build-debug run test cover lint lint-fix fmt fmt-check mod-check mocks hurl tidy vendor docker clean
+.PHONY: help task ci generate check-tools build build-debug run test cover bench bench-smoke bench-profile lint lint-fix fmt fmt-check mod-check mocks hurl tidy vendor docker clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-12s %s\n",$$1,$$2}'
@@ -34,11 +40,12 @@ task: ## Before a commit: generate, tidy, fix, format, then run ci (edits files)
 	$(STEP) fmt
 	$(STEP) ci
 
-ci: ## All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
+ci: ## All checks, read-only: mod-check, fmt-check, lint, cover, bench-smoke (same as GitHub CI)
 	$(STEP) mod-check
 	$(STEP) fmt-check
 	$(STEP) lint
 	$(STEP) cover
+	$(STEP) bench-smoke
 
 generate: ## go generate ./... + regenerate mocks
 	$(GO) generate ./...
@@ -70,6 +77,18 @@ test: ## Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testn
 cover: ## Run tests with a coverage summary (mocks excluded)
 	$(GOTESTSUM) -race -covermode=atomic -coverprofile=$(COVERPROFILE) $(COVER_PKGS)
 	$(GO) tool cover -func=$(COVERPROFILE) | tail -1
+
+bench: ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT, summarised by benchstat into bench.out
+	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -count=$(BENCH_COUNT) ./... > bench.out || { cat bench.out; exit 1; }
+	$(GO) tool benchstat bench.out
+
+bench-smoke: ## Run every benchmark once: they compile and run (CI; timings not judged)
+	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...
+
+bench-profile: ## CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
+	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -cpuprofile=cpu.out -memprofile=mem.out -o bench.test $(BENCH_PKG)
+	@echo "profiles: go tool pprof -top bench.test cpu.out"
+	@echo "          go tool pprof -top -sample_index=alloc_space bench.test mem.out"
 
 lint: check-tools ## go vet + golangci-lint linters
 	$(GO) vet ./...
@@ -105,4 +124,4 @@ docker: ## Build the Docker image
 	docker build --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) --build-arg CREATED=$$(date -u +%Y-%m-%dT%H:%M:%SZ) -t foo:$(VERSION) .
 
 clean: ## Remove build artefacts
-	rm -rf bin coverage.out
+	rm -rf bin coverage.out bench.out bench.test cpu.out mem.out
