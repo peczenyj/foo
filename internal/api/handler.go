@@ -10,10 +10,8 @@ import (
 	"github.com/peczenyj/foo/internal/foo"
 )
 
-var (
-	_ foo.Fooer    = (*foo.Bar)(nil)
-	_ http.Handler = (*API)(nil)
-)
+// API is an http.Handler: the build fails if it stops being one.
+var _ http.Handler = (*API)(nil)
 
 const (
 	contentTypeHeader = `Content-Type`
