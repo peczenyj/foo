@@ -105,7 +105,8 @@ jobs:
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
-  hurl:
+  functional:
+    # Functional tests: the hurl suite against the built binary (make test-functional).
     # hurl's .deb needs libxml2, renamed libxml2-16 on ubuntu-26.04 (ubuntu-latest).
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -121,14 +122,14 @@ jobs:
           curl -fsSLO "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb"
           sudo apt-get install -y "./hurl_${HURL_VERSION}_amd64.deb"
 
-      - name: hurl suite against a fresh server
-        run: make hurl
+      - name: Functional tests (hurl) against a fresh server
+        run: make test-functional
 
   docker:
     # hurl's .deb needs libxml2, renamed libxml2-16 on ubuntu-26.04 (ubuntu-latest).
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    needs: [lint, test, hurl]
+    needs: [lint, test, functional]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

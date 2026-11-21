@@ -68,7 +68,8 @@ invalid value is reported at startup, and the server exits with status 2.
   fmt          Format the code (gofumpt + gci)
   fmt-check    Fail if any file is not formatted
   mod-check    Fail if go.mod/go.sum need tidying (read-only), then verify
-  hurl         Run the hurl suite against a fresh server (needs hurl)
+  test-functional Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
+  test-integration Integration tests (TestIntegration_*, build tag integration; may need Docker)
   mocks        Regenerate mocks with mockery (.mockery.yml)
   tidy         go mod tidy + verify
   vendor       go mod tidy + vendor + verify (vendor/ is git-ignored)
@@ -92,14 +93,23 @@ through gotestsum: `make test GOTESTSUM_FORMAT=testname` lists every test.
 
 ### Tests
 
-Three layers, each catching what the one before can't:
+Each layer catches what the one before can't:
 
-1. **Unit tests** (`internal/api/handler_test.go`) drive the handler with a
-   mockery mock of `Fooer`, including the failure path.
-2. **Integration test** (`internal/api/integration_test.go`) runs the API with
-   the real `Fooer` behind a real HTTP server.
-3. **hurl** (`test/hurl/foo.hurl`) tests the built binary from the outside:
-   `make hurl` starts it on a free port, runs the suite and stops it;
+1. **Unit tests** (`internal/api/handler_test.go`, `make test`) drive the
+   handler with a mockery mock of `Fooer`, including the failure path.
+2. **Component tests** (`internal/api/component_test.go`, `make test`) run the
+   API with the real `Fooer` behind a real HTTP server, in-process, through
+   its public HTTP interface. Nothing outside the process is involved.
+3. **Integration tests** (`make test-integration`) are reserved for tests
+   against real external dependencies (a database, a cache, another
+   service), typically started in Docker by testcontainers-go or dockertest.
+   They live in files with `//go:build integration`, are named
+   `TestIntegration_*`, and never run with `make test`. foo has no external
+   dependency yet: `internal/api/integration_test.go` only shows the
+   convention and skips.
+4. **Functional tests** (`test/hurl/foo.hurl`, `make test-functional`) test
+   the built binary from the outside with [hurl](https://hurl.dev/): the
+   target starts it on a free port, runs the suite and stops it;
    `scripts/hurl.sh http://host:port` tests a server that is already running.
 
 All Go tests use [testify](https://github.com/stretchr/testify).

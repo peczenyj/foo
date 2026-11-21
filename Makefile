@@ -30,7 +30,7 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '/mocks$$')
 STEP          := $(MAKE) --no-print-directory
 
 .DEFAULT_GOAL := help
-.PHONY: help task ci generate check-tools build build-debug run test cover bench bench-compare bench-smoke bench-profile lint lint-fix fmt fmt-check mod-check mocks hurl tidy vendor docker clean
+.PHONY: help task ci generate check-tools build build-debug run test cover bench bench-compare bench-smoke bench-profile lint lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-12s %s\n",$$1,$$2}'
@@ -113,8 +113,11 @@ mod-check: ## Fail if go.mod/go.sum need tidying (read-only), then verify
 	$(GO) mod tidy -diff
 	$(GO) mod verify
 
-hurl: ## Run the hurl suite against a fresh server (needs hurl)
+test-functional: ## Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
 	scripts/hurl.sh
+
+test-integration: ## Integration tests (TestIntegration_*, build tag integration; may need Docker)
+	$(GOTESTSUM) -race -count=1 -tags integration -run '^TestIntegration' ./...
 
 mocks: ## Regenerate mocks with mockery (.mockery.yml)
 	$(GO) tool mockery

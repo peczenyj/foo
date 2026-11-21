@@ -3,6 +3,9 @@ version: "2"
 
 run:
   timeout: 5m
+  # Lint the integration tests too (//go:build integration).
+  build-tags:
+    - integration
   modules-download-mode: readonly
 
 linters:
