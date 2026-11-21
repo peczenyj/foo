@@ -1,7 +1,9 @@
 package api_test
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"net/http"
 	"testing"
 
@@ -25,6 +27,7 @@ func TestAPI(t *testing.T) {
 		status  int
 		message string // expected MessageBody.Message, for 200 on /foo only
 		allow   string // expected Allow header, for 405 only
+		logged  string // expected substring of the logs; empty: nothing logged
 	}{
 		{
 			label:   "should reply the Fooer message",
@@ -50,6 +53,7 @@ func TestAPI(t *testing.T) {
 			method: http.MethodGet,
 			target: "/foo",
 			status: http.StatusInternalServerError,
+			logged: "secret db failure",
 		},
 		{label: "should return 404 for an unknown path", method: http.MethodGet, target: "/bar", status: http.StatusNotFound},
 		{label: "should return 404 for a trailing slash", method: http.MethodGet, target: "/foo/", status: http.StatusNotFound},
@@ -70,7 +74,11 @@ func TestAPI(t *testing.T) {
 				tc.setup(fooer)
 			}
 
-			status, body, headers := doRequest(t, api.New(fooer), tc.method, tc.target)
+			var logs bytes.Buffer
+
+			logger := slog.New(slog.NewTextHandler(&logs, nil))
+
+			status, body, headers := doRequest(t, api.New(fooer, logger), tc.method, tc.target)
 
 			assert.Equal(t, tc.status, status)
 
@@ -86,6 +94,13 @@ func TestAPI(t *testing.T) {
 				assert.Empty(t, body)
 			}
 
+			// The error the client never sees must reach the logs.
+			if tc.logged != "" {
+				assert.Contains(t, logs.String(), tc.logged)
+			} else {
+				assert.Empty(t, logs.String())
+			}
+
 			if tc.allow != "" {
 				assert.Equal(t, tc.allow, headers.Get("Allow"))
 			}
@@ -96,5 +111,11 @@ func TestAPI(t *testing.T) {
 func TestNew_panics_on_nil_Fooer(t *testing.T) {
 	t.Parallel()
 
-	assert.PanicsWithValue(t, "api.New: nil Fooer", func() { api.New(nil) })
+	assert.PanicsWithValue(t, "api.New: nil Fooer", func() { api.New(nil, slog.Default()) })
+}
+
+func TestNew_panics_on_nil_Logger(t *testing.T) {
+	t.Parallel()
+
+	assert.PanicsWithValue(t, "api.New: nil Logger", func() { api.New(mocks.NewMockFooer(t), nil) })
 }

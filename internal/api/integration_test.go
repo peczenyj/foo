@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,7 +19,7 @@ import (
 func TestAPI_with_real_Fooer(t *testing.T) {
 	t.Parallel()
 
-	srv := httptest.NewServer(api.New(foo.Bar{}))
+	srv := httptest.NewServer(api.New(foo.Bar{}, slog.New(slog.DiscardHandler)))
 	t.Cleanup(srv.Close)
 
 	t.Run("GET /foo replies bar", func(t *testing.T) {
