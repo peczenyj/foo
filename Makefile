@@ -1,5 +1,9 @@
 GO            ?= go
 GOLANGCI_LINT ?= golangci-lint
+# golangci-lint is installed by each developer; CI pins the same version
+# (.github/workflows/ci.yml). make check-tools tells you what to install.
+GOLANGCI_LINT_VERSION := 2.15.0
+GOLANGCI_LINT_INSTALL := https://golangci-lint.run/docs/welcome/install/
 BIN           := bin/foo
 DEBUG_BIN     := bin/foo-debug
 VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -14,7 +18,7 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '/mocks$$')
 STEP          := $(MAKE) --no-print-directory
 
 .DEFAULT_GOAL := help
-.PHONY: help task ci generate build build-debug run test cover lint lint-fix fmt fmt-check mod-check mocks hurl tidy vendor docker clean
+.PHONY: help task ci generate check-tools build build-debug run test cover lint lint-fix fmt fmt-check mod-check mocks hurl tidy vendor docker clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-12s %s\n",$$1,$$2}'
@@ -36,6 +40,17 @@ generate: ## go generate ./... + regenerate mocks
 	$(GO) generate ./...
 	$(STEP) mocks
 
+check-tools: ## Fail with install instructions if golangci-lint is missing
+	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { \
+		echo "error: golangci-lint not found ($(GOLANGCI_LINT))." >&2; \
+		echo "Install golangci-lint v$(GOLANGCI_LINT_VERSION), the version CI uses:" >&2; \
+		echo "  $(GOLANGCI_LINT_INSTALL)" >&2; \
+		echo "or point to another binary: make <target> GOLANGCI_LINT=/path/to/golangci-lint" >&2; \
+		exit 1; }
+	@v=$$($(GOLANGCI_LINT) version --short 2>/dev/null); \
+	[ "$$v" = "$(GOLANGCI_LINT_VERSION)" ] || \
+		echo "warning: golangci-lint $$v is installed, CI uses $(GOLANGCI_LINT_VERSION): results may differ ($(GOLANGCI_LINT_INSTALL))" >&2
+
 build: ## Build the server binary into bin/
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/server
 
@@ -52,18 +67,18 @@ cover: ## Run tests with a coverage summary (mocks excluded)
 	$(GO) test -race -covermode=atomic -coverprofile=$(COVERPROFILE) $(COVER_PKGS)
 	$(GO) tool cover -func=$(COVERPROFILE) | tail -1
 
-lint: ## go vet + golangci-lint linters
+lint: check-tools ## go vet + golangci-lint linters
 	$(GO) vet ./...
 	$(GOLANGCI_LINT) run ./...
 
-lint-fix: ## go fix + golangci-lint --fix (edits files)
+lint-fix: check-tools ## go fix + golangci-lint --fix (edits files)
 	$(GO) fix ./...
 	$(GOLANGCI_LINT) run --fix ./...
 
-fmt: ## Format the code (gofumpt + gci)
+fmt: check-tools ## Format the code (gofumpt + gci)
 	$(GOLANGCI_LINT) fmt ./...
 
-fmt-check: ## Fail if any file is not formatted
+fmt-check: check-tools ## Fail if any file is not formatted
 	$(GOLANGCI_LINT) fmt --diff ./...
 
 mod-check: ## Fail if go.mod/go.sum need tidying (read-only), then verify

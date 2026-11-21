@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `make task`: run before committing. generate → tidy → lint-fix → fmt → ci; it edits files. `make ci` is read-only (mod-check, fmt-check, lint, cover) and mirrors GitHub CI. Keep `ci` read-only: anything that fixes belongs in `task`.
 - `make test`: all tests with `-race`. Single test: `go test -race -run '^TestAPI$/should_reject_POST' ./internal/api/`
+- golangci-lint is not vendored: developers install it (v2.15.0, `GOLANGCI_LINT_VERSION` in the Makefile, kept in sync with `ci.yml`). `make check-tools` (a prerequisite of lint/lint-fix/fmt/fmt-check) fails with the install URL if it is missing and warns on a version mismatch. mockery stays a `go tool`.
 - `make lint`: `go vet` + golangci-lint linters. `make fmt` rewrites files (gofumpt + gci); `make fmt-check` only reports and is what CI runs.
 - `make hurl`: builds `bin/foo`, starts it on a free port (`-port=0`, the bound address is read from the `"msg":"listening"` JSON log line), runs `test/hurl/*.hurl`, stops it. `scripts/hurl.sh <base-url>` targets a running server.
 - `make cover`: coverage without `internal/api/mocks` (filtered in `COVER_PKGS`; CI runs `make cover COVERPROFILE=coverage.txt`, and `codecov.yml` ignores the mocks too).

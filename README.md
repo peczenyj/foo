@@ -54,6 +54,7 @@ invalid value is reported at startup, and the server exits with status 2.
   task         Before a commit: generate, tidy, fix, format, then run ci (edits files)
   ci           All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
   generate     go generate ./... + regenerate mocks
+  check-tools  Fail with install instructions if golangci-lint is missing
   build        Build the server binary into bin/
   build-debug  Build bin/foo-debug with debug symbols, no optimizations (for dlv)
   run          Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
@@ -77,9 +78,12 @@ Before committing, run `make task`: it regenerates code and mocks, tidies
 `make ci`. `make ci` only checks (it never edits a file) and runs the same
 checks as GitHub CI, so a green `make task` means a green CI.
 
-Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/) v2,
-[hurl](https://hurl.dev/), Docker. mockery is pinned in `go.mod` as a tool
-and runs with `go tool mockery`; nothing to install.
+Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/docs/welcome/install/)
+v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker. The lint
+and format targets run `make check-tools` first: it stops with the install
+link if golangci-lint is missing, and warns if your version differs from
+CI's. mockery is pinned in `go.mod` as a tool and runs with
+`go tool mockery`; nothing to install.
 
 ### Tests
 

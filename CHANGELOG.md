@@ -27,3 +27,4 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - `make build-debug` builds `bin/foo-debug` with debug symbols and without optimizations, for debuggers such as Delve.
 - Coverage leaves out the generated mocks (`make cover`, CI and `codecov.yml`).
 - `make task` (generate, tidy, fix, format, then ci) to run before committing; `make ci` runs every check read-only, as GitHub CI does; plus `make generate`, `make lint-fix` and `make mod-check`. CI now checks that go.mod/go.sum are tidy.
+- `make check-tools`: the lint and format targets stop with the install link if golangci-lint is missing, and warn when its version differs from the one CI pins (2.15.0).
