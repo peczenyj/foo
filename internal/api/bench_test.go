@@ -29,7 +29,7 @@ func (w *discardWriter) reset() { clear(w.header) }
 func newGetFoo(b *testing.B) (http.Handler, *http.Request) {
 	b.Helper()
 
-	handler := api.New(foo.Bar{}, slog.New(slog.DiscardHandler))
+	handler := api.New(&foo.Bar{}, slog.New(slog.DiscardHandler))
 
 	return handler, httptest.NewRequestWithContext(b.Context(), http.MethodGet, "/foo", nil)
 }

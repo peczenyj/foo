@@ -78,7 +78,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if err := RunServer(ctx, cfg, api.New(foo.Bar{}, logger), logger); err != nil {
+	if err := RunServer(ctx, cfg, api.New(&foo.Bar{}, logger), logger); err != nil {
 		logger.Error("server finished with error", slog.Any("error", err))
 
 		return exitError

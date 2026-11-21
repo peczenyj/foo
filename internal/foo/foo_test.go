@@ -12,7 +12,7 @@ import (
 func TestBar_Foo(t *testing.T) {
 	t.Parallel()
 
-	got, err := foo.Bar{}.Foo(t.Context())
+	got, err := (&foo.Bar{}).Foo(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, "bar", got)
 }

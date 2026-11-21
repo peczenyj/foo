@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	_ foo.Fooer    = foo.Bar{}
+	_ foo.Fooer    = (*foo.Bar)(nil)
 	_ http.Handler = (*API)(nil)
 )
 

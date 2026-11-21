@@ -20,9 +20,9 @@ This file provides guidance to AI coding agents (Claude Code, Codex, Gemini CLI,
 
 ## Architecture
 
-`cmd/server/main.go` `run()` → `internal/config.Parse` (flags, with `FOO_*` env vars as defaults; flag > env > default; every invalid value reported, exit 2) → `cfg.NewLogger` (slog text/json) → `api.New(foo.Bar{})` → `RunServer` (listens first, logs the bound address, graceful shutdown on SIGINT/SIGTERM or ctx cancel).
+`cmd/server/main.go` `run()` → `internal/config.Parse` (flags, with `FOO_*` env vars as defaults; flag > env > default; every invalid value reported, exit 2) → `cfg.NewLogger` (slog text/json) → `api.New(&foo.Bar{}, logger)` → `RunServer` (listens first, logs the bound address, graceful shutdown on SIGINT/SIGTERM or ctx cancel).
 
-- `internal/foo`: the `Fooer` interface (`Foo(ctx) (string, error)`) and the real implementation `Bar`.
+- `internal/foo`: the `Fooer` interface (`Foo(ctx) (string, error)`) and the real implementation `*Bar` (pointer receiver: wire it as `&foo.Bar{}`).
 - `internal/api`: the `http.Handler`. Only `GET /foo` answers JSON (`MessageBody`). Errors carry no JSON: 404/405 come from `http.ServeMux` defaults (there is deliberately no catch-all route), a `Fooer` error becomes `http.Error` 500 and is logged, never echoed.
 
 ## Conventions
