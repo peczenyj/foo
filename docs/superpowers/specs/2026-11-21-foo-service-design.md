@@ -96,6 +96,10 @@ failure, 0 otherwise — same contract as the blueprint.
 
 ### Tests
 
+All Go tests use testify (`require` for checks the test can't continue
+past, `assert` otherwise); it is a test-only dependency, also required by
+mockery's testify template.
+
 - `internal/api`: table tests with `mocks.MockFooer` (success, error → 500,
   404, 405, content type), via `httptest.NewRecorder`.
 - `internal/api`: integration test with the real `foo` implementation behind
