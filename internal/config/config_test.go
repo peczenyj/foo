@@ -165,7 +165,7 @@ func TestParse_help(t *testing.T) {
 	assert.Contains(t, output, config.EnvPort)
 }
 
-// -version skips flag validation, as in go-fizzbuzz: printing the version
+// -version skips flag validation: printing the version
 // must work whatever else is on the command line.
 func TestParse_version_skips_flag_validation(t *testing.T) {
 	t.Parallel()

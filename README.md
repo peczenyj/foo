@@ -8,8 +8,7 @@
 A small Go HTTP service written as an example of good practices: an
 interface-driven handler, a generated mock, layered tests, configuration from
 flags and environment variables, structured logs, linters and formatters,
-Docker and CI. Its layout follows
-[go-fizzbuzz](https://github.com/peczenyj/go-fizzbuzz).
+Docker and CI.
 
 ## API
 

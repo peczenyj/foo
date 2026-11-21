@@ -23,8 +23,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `internal/foo`: the `Fooer` interface (`Foo(ctx) (string, error)`) and the real implementation `Bar`.
 - `internal/api`: the `http.Handler`. Only `GET /foo` answers JSON (`MessageBody`). Errors carry no JSON: 404/405 come from `http.ServeMux` defaults (there is deliberately no catch-all route), a `Fooer` error becomes `http.Error` 500 and is logged, never echoed.
 
-The layout and conventions mirror `github.com/peczenyj/go-fizzbuzz`; when in doubt, follow it.
-
 ## Conventions
 
 - Branches: `devel` is the default branch and the target of feature PRs; `main` is release-only and protected (PRs from `devel`, CI must pass). Never push to `main` directly.

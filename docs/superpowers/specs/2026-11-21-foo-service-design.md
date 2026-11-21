@@ -10,7 +10,7 @@ error status (404, 405, 500) with no JSON body.
 The value is in the scaffolding around it: an interface-driven handler, a
 generated mock, layered tests (unit with mock, integration with the real
 implementation, black-box hurl), CLI/env configuration, structured logging,
-lint, Docker and CI. `github.com/peczenyj/go-fizzbuzz` is the blueprint.
+lint, Docker and CI.
 
 ## Goals
 
@@ -21,29 +21,28 @@ lint, Docker and CI. `github.com/peczenyj/go-fizzbuzz` is the blueprint.
 - A hurl suite run against the live binary: `/foo` → 200 `bar`, `/bar` → 404 error.
 - Host and port configurable by flag and environment variable; debug log
   level and JSON log format switchable the same way.
-- Makefile, golangci-lint config, Dockerfile and GitHub Actions CI modelled
-  on go-fizzbuzz.
+- Makefile, golangci-lint config, Dockerfile and GitHub Actions CI.
 
 ## Non-goals
 
-- OpenAPI spec, fuzzing, request statistics, benchmarks (fizzbuzz-specific).
+- OpenAPI spec and fuzzing (left for later).
 - Any third-party runtime dependency.
 
 ## Anti-goals
 
-- Diverging from the blueprint's patterns without a reason: this repo is
-  meant to be read as an example.
+- Inconsistent or unexplained patterns: this repo is meant to be read as an
+  example.
 - Tests that depend on fixed ports or each other (they must run with `-race`
   and in parallel).
 
 ## Approaches
 
-- **A. Follow go-fizzbuzz closely — chosen.** stdlib `flag` with `FOO_*` env
-  vars as defaults (flag > env > built-in default), same package layout and
-  shutdown logic. Matches the blueprint, zero runtime deps; costs ~150 lines
+- **A. Standard library — chosen.** stdlib `flag` with `FOO_*` env
+  vars as defaults (flag > env > built-in default), `cmd/server` + `internal/*`
+  layout, graceful shutdown. Zero runtime deps; costs ~150 lines
   of config code we own and test.
 - **B. CLI library (kong, or cobra+viper).** Less config code via struct tags,
-  but diverges from the blueprint and adds a runtime dependency.
+  but adds a runtime dependency.
 
 ## Design
 
@@ -72,10 +71,10 @@ handler's 500 path can be tested with the mock.
 
 ### `internal/api`
 
-- `New(f foo.Fooer) *API` — panics on nil (wiring bug), like the blueprint.
+- `New(f foo.Fooer) *API` — panics on nil (wiring bug).
 - Routes: `GET /healthz` → 200 empty; `GET /foo` → 200 `{"message":"bar"}`
-  with `Content-Type: application/json`, via a `writeJSON` helper as in the
-  blueprint. JSON is only for this success case.
+  with `Content-Type: application/json`, via a `writeJSON` helper. JSON is
+  only for this success case.
 - Errors are the standard HTTP status with no JSON body: unknown path → 404
   and wrong method → 405 (with `Allow`), both left to `http.ServeMux`'s
   defaults; `Fooer` error → `http.Error(w, http.StatusText(500), 500)`, error
@@ -94,7 +93,7 @@ handler's 500 path can be tested with the mock.
 
 `Config.Addr()` returns `net.JoinHostPort(host, port)`. Invalid env vars and
 flags are reported to stderr; `run` exits 2 on usage errors, 1 on server
-failure, 0 otherwise — same contract as the blueprint.
+failure, 0 otherwise.
 
 ### Tests
 
@@ -122,7 +121,7 @@ mockery's testify template.
   a free port in the background, waits for `/healthz`, runs
   `hurl --test --variable base_url=…`, and stops the server. Script in
   `scripts/hurl.sh`.
-- **Makefile** targets from the blueprint: `help build run test cover lint fmt
+- **Makefile** targets: `help build run test cover lint fmt
   tidy docker clean`, plus `mocks`, `hurl` and `fmt-check`. golangci-lint is
   the single entry point for both linters and formatters, driven by
   `.golangci.yml`:
@@ -132,9 +131,10 @@ mockery's testify template.
     is unformatted; used in CI, changes nothing).
   - `GOLANGCI_LINT ?= golangci-lint` so a different binary/version can be
     passed (`make lint GOLANGCI_LINT=…`).
-- **.golangci.yml**: the blueprint's config, with the gci prefix changed to
-  `github.com/peczenyj/foo` and the mocks directory excluded.
-- **Dockerfile**: the blueprint's two-stage distroless build, binary `/foo`.
+- **.golangci.yml**: golangci-lint v2, `standard` linters plus bodyclose,
+  errorlint, gocritic, gocyclo, gosec, misspell, prealloc and revive;
+  gofumpt and gci (prefix `github.com/peczenyj/foo`); mocks excluded.
+- **Dockerfile**: two-stage build into distroless `static:nonroot`, binary `/foo`.
 - **CI** (`.github/workflows/ci.yml`): lint (golangci-lint action, then
   `make fmt-check`), test (Go 1.26.x and 1.27.x,
   race + coverage), mocks-up-to-date check, govulncheck, a hurl job (installs
@@ -146,4 +146,4 @@ mockery's testify template.
 ## Left to the builder
 
 - Exact test names and table contents, log messages, README wording.
-- Pinned versions for GitHub Actions (reuse the blueprint's SHAs).
+- Pinned versions for GitHub Actions (full commit SHAs).
