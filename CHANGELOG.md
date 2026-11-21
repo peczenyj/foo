@@ -20,3 +20,4 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - hurl suite (`make hurl`), linters and formatters through golangci-lint
   (`make lint`, `make fmt`, `make fmt-check`), Docker image and CI.
 - `make vendor` vendors the dependencies locally; `vendor/` is never committed.
+- README badges: CI status, latest tag and Go version.
