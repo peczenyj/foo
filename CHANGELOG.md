@@ -26,3 +26,4 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - Targets Go 1.27: `go.mod` requires it and CI tests only 1.27; the README badge reads the version from `go.mod`.
 - `make build-debug` builds `bin/foo-debug` with debug symbols and without optimizations, for debuggers such as Delve.
 - Coverage leaves out the generated mocks (`make cover`, CI and `codecov.yml`).
+- `make task` (generate, tidy, fix, format, then ci) to run before committing; `make ci` runs every check read-only, as GitHub CI does; plus `make generate`, `make lint-fix` and `make mod-check`. CI now checks that go.mod/go.sum are tidy.

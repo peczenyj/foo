@@ -35,6 +35,9 @@ jobs:
       - name: Formatting (gofumpt + gci)
         run: make fmt-check
 
+      - name: go.mod and go.sum are tidy and verified
+        run: make mod-check
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10

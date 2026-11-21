@@ -51,14 +51,19 @@ invalid value is reported at startup, and the server exits with status 2.
 
 ```text
   help         Show available targets
+  task         Before a commit: generate, tidy, fix, format, then run ci (edits files)
+  ci           All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
+  generate     go generate ./... + regenerate mocks
   build        Build the server binary into bin/
   build-debug  Build bin/foo-debug with debug symbols, no optimizations (for dlv)
   run          Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
   test         Run all tests with the race detector
   cover        Run tests with a coverage summary (mocks excluded)
   lint         go vet + golangci-lint linters
+  lint-fix     go fix + golangci-lint --fix (edits files)
   fmt          Format the code (gofumpt + gci)
   fmt-check    Fail if any file is not formatted
+  mod-check    Fail if go.mod/go.sum need tidying (read-only), then verify
   hurl         Run the hurl suite against a fresh server (needs hurl)
   mocks        Regenerate mocks with mockery (.mockery.yml)
   tidy         go mod tidy + verify
@@ -66,6 +71,11 @@ invalid value is reported at startup, and the server exits with status 2.
   docker       Build the Docker image
   clean        Remove build artefacts
 ```
+
+Before committing, run `make task`: it regenerates code and mocks, tidies
+`go.mod`, applies `go fix` and the linters' fixes, formats, then runs
+`make ci`. `make ci` only checks (it never edits a file) and runs the same
+checks as GitHub CI, so a green `make task` means a green CI.
 
 Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/) v2,
 [hurl](https://hurl.dev/), Docker. mockery is pinned in `go.mod` as a tool
