@@ -1,0 +1,13 @@
+# mockery v3 configuration: `make mocks` (go tool mockery) regenerates the mocks.
+all: false
+dir: internal/api/mocks
+filename: mock_fooer.go
+pkgname: mocks
+structname: Mock{{.InterfaceName}}
+template: testify
+force-file-write: true
+formatter: goimports
+packages:
+  github.com/peczenyj/foo/internal/foo:
+    interfaces:
+      Fooer: {}
