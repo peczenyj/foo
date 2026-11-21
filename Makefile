@@ -1,18 +1,23 @@
 GO            ?= go
 GOLANGCI_LINT ?= golangci-lint
 BIN           := bin/foo
+DEBUG_BIN     := bin/foo-debug
 VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
-LDFLAGS       := -s -w -X main.version=$(VERSION) -X main.revision=$(REVISION)
+VERSION_FLAGS := -X main.version=$(VERSION) -X main.revision=$(REVISION)
+LDFLAGS       := -s -w $(VERSION_FLAGS)
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test cover lint fmt fmt-check mocks hurl tidy vendor docker clean
+.PHONY: help build build-debug run test cover lint fmt fmt-check mocks hurl tidy vendor docker clean
 
 help: ## Show available targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-10s %s\n",$$1,$$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-12s %s\n",$$1,$$2}'
 
 build: ## Build the server binary into bin/
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/server
+
+build-debug: ## Build bin/foo-debug with debug symbols, no optimizations (for dlv)
+	CGO_ENABLED=0 $(GO) build -gcflags='all=-N -l' -ldflags "$(VERSION_FLAGS)" -o $(DEBUG_BIN) ./cmd/server
 
 run: ## Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
 	$(GO) run ./cmd/server $(ARGS)

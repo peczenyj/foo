@@ -50,20 +50,21 @@ invalid value is reported at startup, and the server exits with status 2.
 ## Development
 
 ```text
-  help       Show available targets
-  build      Build the server binary into bin/
-  run        Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
-  test       Run all tests with the race detector
-  cover      Run tests with a coverage summary
-  lint       go vet + golangci-lint linters
-  fmt        Format the code (gofumpt + gci)
-  fmt-check  Fail if any file is not formatted
-  hurl       Run the hurl suite against a fresh server (needs hurl)
-  mocks      Regenerate mocks with mockery (.mockery.yml)
-  tidy       go mod tidy + verify
-  vendor     go mod tidy + vendor + verify (vendor/ is git-ignored)
-  docker     Build the Docker image
-  clean      Remove build artefacts
+  help         Show available targets
+  build        Build the server binary into bin/
+  build-debug  Build bin/foo-debug with debug symbols, no optimizations (for dlv)
+  run          Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
+  test         Run all tests with the race detector
+  cover        Run tests with a coverage summary
+  lint         go vet + golangci-lint linters
+  fmt          Format the code (gofumpt + gci)
+  fmt-check    Fail if any file is not formatted
+  hurl         Run the hurl suite against a fresh server (needs hurl)
+  mocks        Regenerate mocks with mockery (.mockery.yml)
+  tidy         go mod tidy + verify
+  vendor       go mod tidy + vendor + verify (vendor/ is git-ignored)
+  docker       Build the Docker image
+  clean        Remove build artefacts
 ```
 
 Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/) v2,

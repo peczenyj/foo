@@ -24,3 +24,4 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - Test coverage uploaded to Codecov from CI (Go 1.27 job), with a README badge.
 - Branches: `devel` is the default branch, `main` is protected and holds releases; CI runs on both.
 - Targets Go 1.27: `go.mod` requires it and CI tests only 1.27; the README badge reads the version from `go.mod`.
+- `make build-debug` builds `bin/foo-debug` with debug symbols and without optimizations, for debuggers such as Delve.

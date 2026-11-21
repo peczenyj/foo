@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `make hurl`: builds `bin/foo`, starts it on a free port (`-port=0`, the bound address is read from the `"msg":"listening"` JSON log line), runs `test/hurl/*.hurl`, stops it. `scripts/hurl.sh <base-url>` targets a running server.
 - `make mocks`: regenerate `internal/api/mocks` with `go tool mockery` (pinned in `go.mod`, configured in `.mockery.yml`). Run it after changing `foo.Fooer`; CI fails on stale mocks. Never hand-edit the mocks.
 - `make vendor`: tidy + vendor + verify. `vendor/` is git-ignored and must never be committed; while it exists locally, Go builds from it.
+- `make build-debug`: `bin/foo-debug` keeps DWARF and the symbol table, with `-N -l` (no optimizations or inlining) and no `-trimpath`, for `dlv exec bin/foo-debug`. `make build` is the stripped release binary.
 - `make run ARGS="-log-level=debug -log-format=json"`, `make docker`.
 
 ## Architecture
