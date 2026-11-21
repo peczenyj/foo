@@ -21,3 +21,4 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
   (`make lint`, `make fmt`, `make fmt-check`), Docker image and CI.
 - `make vendor` vendors the dependencies locally; `vendor/` is never committed.
 - README badges: CI status, latest tag and Go version.
+- Test coverage uploaded to Codecov from CI (Go 1.27 job), with a README badge.

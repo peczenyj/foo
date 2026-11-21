@@ -3,6 +3,7 @@
 [![CI](https://github.com/peczenyj/foo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/peczenyj/foo/actions/workflows/ci.yml)
 [![Latest tag](https://img.shields.io/github/v/tag/peczenyj/foo?sort=semver)](https://github.com/peczenyj/foo/tags)
 [![Go 1.27](https://img.shields.io/badge/go-1.27-00ADD8?logo=go)](https://go.dev/doc/go1.27)
+[![codecov](https://codecov.io/gh/peczenyj/foo/graph/badge.svg)](https://codecov.io/gh/peczenyj/foo)
 
 A small Go HTTP service written as an example of good practices: an
 interface-driven handler, a generated mock, layered tests, configuration from
