@@ -1,34 +1,69 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
+# Build output: make build, make build-debug
+/bin/
+# Go binaries, plugins and test binaries (go test -c, make bench-profile)
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-
-# Test binary, built with `go test -c`
 *.test
-
-# Code coverage profiles and other test artifacts
+# Coverage, benchmark and profile outputs (make cover, make bench, make bench-profile)
 *.out
+*.coverprofile
 coverage.html
 coverage.txt
 coverage.xml
-*.coverprofile
 profile.cov
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
+.coverage.*
+.test_report.xml
+# golangci-lint GitLab Code Quality report
+gl-code-quality-report.json
+# Dependencies: go.mod/go.sum pin them; make vendor creates vendor/ locally,
+# it is never committed.
+/vendor/
+# Working docs (design specs, implementation plans): local only
+docs/superpowers/
+# Hidden markdown files, for personal notes (.NOTES.md, .README.md, ...)
+.*.md
+# Backup files
+*~
+*.bak
+*.old
+# CI and release build directories
+/dist
+/build
+/builds
+/tmp
+# Others
+.local
+.env
+.env.*
+.cache
+.vscode
+.idea
+# Don't store go.work and go.work.sum files.
 go.work
 go.work.sum
 
-# env file
-.env
+# AI coding tools — local/personal only
 
-# Editor/IDE
-# .idea/
-# .vscode/
+# Claude Code
+.claude/settings.local.json
+.claude/agent-memory-local/
+.claude/worktrees/
+.claude/CLAUDE.md
+
+# Aider
+.aider.conf.yml
+.aider.chat.history.md
+.aider.tags.cache.v3/
+.aiderignore
+
+# Cursor
+.cursor/mcp.json
+
+# Windsurf
+.windsurf/settings.json
+
+# Gemini CLI
+.gemini/settings.json

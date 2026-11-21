@@ -1,0 +1,10 @@
+.git
+.github
+coverage.*
+*.out
+*.test
+Dockerfile
+README.md
+CHANGELOG.md
+bin
+vendor

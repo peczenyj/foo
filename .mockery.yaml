@@ -1,0 +1,15 @@
+---
+template: testify
+# Go only lets a package under a path with an "internal" element be imported
+# from that path's parent, so mocks of internal/... packages drop the
+# element: internal/foo is mocked in mocks/github.com/peczenyj/foo/foo.
+dir: "mocks/{{.SrcPackagePath | replaceAll \"/internal/\" \"/\"}}"
+filename: "{{.InterfaceName | snakecase}}.go"
+pkgname: "{{.SrcPackageName}}mock"
+structname: "{{.InterfaceName}}"
+template-data:
+  unroll-variadic: true
+packages:
+  github.com/peczenyj/foo/internal/foo:
+    interfaces:
+      Fooer:

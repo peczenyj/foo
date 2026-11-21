@@ -1,0 +1,4 @@
+# CHANGELOG is append-only: every MR adds a bullet at the tail, so two MRs
+# always overlap on the same line. `union` keeps BOTH sides of a conflicting
+# hunk instead of flagging it, auto-resolving the append.
+CHANGELOG.md merge=union

@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [devel, main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HURL_VERSION: "8.0.1"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0 # keep in sync with GOLANGCI_LINT_VERSION in the Makefile
+
+      - name: Formatting (gofumpt + gci)
+        run: make fmt-check
+
+      - name: go.mod and go.sum are tidy and verified
+        run: make mod-check
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # The project targets Go 1.27 (go.mod); add newer releases here.
+        go-version: ["1.27.x"]
+    name: test (go ${{ matrix.go-version }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Vet
+        run: go vet ./...
+
+      # make cover leaves the generated mocks out of the coverage; the
+      # github-actions format folds output per package and annotates failures.
+      - name: Test (race + coverage)
+        run: make cover COVERPROFILE=coverage.txt GOTESTSUM_FORMAT=github-actions
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        if: matrix.go-version == '1.27.x'
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: peczenyj/foo
+
+  mocks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Regenerate mocks
+        run: make mocks
+
+      - name: Mocks are up to date
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)" || { echo "mocks are stale: run make mocks and commit" >&2; exit 1; }
+
+  vulncheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  functional:
+    # Functional tests: the hurl suite against the built binary (make test-functional).
+    # hurl's .deb needs libxml2, renamed libxml2-16 on ubuntu-26.04 (ubuntu-latest).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install hurl
+        run: |
+          curl -fsSLO "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb"
+          sudo apt-get install -y "./hurl_${HURL_VERSION}_amd64.deb"
+
+      - name: Functional tests (hurl) against a fresh server
+        run: make test-functional
+
+  docker:
+    # hurl's .deb needs libxml2, renamed libxml2-16 on ubuntu-26.04 (ubuntu-latest).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: [lint, test, functional]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build image
+        run: |
+          docker build \
+            --build-arg VERSION=${{ github.ref_name }} \
+            --build-arg REVISION=${{ github.sha }} \
+            --build-arg CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            -t foo:ci .
+
+      - name: Install hurl
+        run: |
+          curl -fsSLO "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb"
+          sudo apt-get install -y "./hurl_${HURL_VERSION}_amd64.deb"
+
+      - name: Smoke test
+        run: |
+          docker run --rm foo:ci -version | tee version.txt
+          grep -q '^foo ' version.txt
+          docker run -d --name foo -p 8080:8080 foo:ci
+          for i in $(seq 1 20); do
+            curl -fsS localhost:8080/healthz && break
+            sleep 0.5
+          done
+          scripts/hurl.sh http://localhost:8080
+
+      - name: Container logs
+        if: always()
+        run: docker logs foo || true
