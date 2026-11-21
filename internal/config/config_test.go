@@ -127,9 +127,21 @@ func TestParse_errors(t *testing.T) {
 		env    map[string]string
 		output string // expected substring
 	}{
-		{label: "should reject a non-numeric FOO_PORT", env: map[string]string{config.EnvPort: "abc"}, output: config.EnvPort},
-		{label: "should reject a FOO_PORT above 65535", env: map[string]string{config.EnvPort: "70000"}, output: config.EnvPort},
-		{label: "should reject a negative FOO_PORT", env: map[string]string{config.EnvPort: "-1"}, output: config.EnvPort},
+		{
+			label:  "should reject a non-numeric FOO_PORT",
+			env:    map[string]string{config.EnvPort: "abc"},
+			output: config.EnvPort,
+		},
+		{
+			label:  "should reject a FOO_PORT above 65535",
+			env:    map[string]string{config.EnvPort: "70000"},
+			output: config.EnvPort,
+		},
+		{
+			label:  "should reject a negative FOO_PORT",
+			env:    map[string]string{config.EnvPort: "-1"},
+			output: config.EnvPort,
+		},
 		{
 			label:  "should report an invalid FOO_PORT even when -port replaces it",
 			args:   []string{"-port=7070"},
@@ -138,7 +150,11 @@ func TestParse_errors(t *testing.T) {
 		},
 		{label: "should reject a port above 65535", args: []string{"-port=65536"}, output: "port 65536"},
 		{label: "should reject an unknown log format", args: []string{"-log-format=xml"}, output: `log format "xml"`},
-		{label: "should reject an unknown log level", env: map[string]string{config.EnvLogLevel: "loud"}, output: config.EnvLogLevel},
+		{
+			label:  "should reject an unknown log level",
+			env:    map[string]string{config.EnvLogLevel: "loud"},
+			output: config.EnvLogLevel,
+		},
 		{label: "should reject a zero shutdown timeout", args: []string{"-shutdown-timeout=0s"}, output: "shutdown timeout"},
 		{label: "should reject extra arguments", args: []string{"foo"}, output: "unexpected arguments"},
 	}
@@ -186,8 +202,16 @@ func TestNewLogger(t *testing.T) {
 		debug     bool
 	}{
 		{label: "should write text at info by default", cfg: config.Default()},
-		{label: "should write JSON", cfg: config.Config{LogFormat: config.LogFormatJSON, LogLevel: slog.LevelInfo}, jsonLines: true},
-		{label: "should log debug in debug mode", cfg: config.Config{LogFormat: config.LogFormatText, LogLevel: slog.LevelDebug}, debug: true},
+		{
+			label:     "should write JSON",
+			cfg:       config.Config{LogFormat: config.LogFormatJSON, LogLevel: slog.LevelInfo},
+			jsonLines: true,
+		},
+		{
+			label: "should log debug in debug mode",
+			cfg:   config.Config{LogFormat: config.LogFormatText, LogLevel: slog.LevelDebug},
+			debug: true,
+		},
 	}
 
 	for _, tc := range testcases {

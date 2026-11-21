@@ -31,6 +31,8 @@ const (
 )
 
 // Set at build time with -ldflags "-X main.version=... -X main.revision=...".
+//
+//nolint:gochecknoglobals // -ldflags -X can only set package-level variables.
 var (
 	version  = "dev"
 	revision = "unknown"
@@ -122,7 +124,13 @@ func RunServer(ctx context.Context, cfg config.Config, handler http.Handler, log
 	return <-done
 }
 
-func prepareServerShutdown(ctx context.Context, server *http.Server, timeout time.Duration, logger *slog.Logger, done chan error) {
+func prepareServerShutdown(
+	ctx context.Context,
+	server *http.Server,
+	timeout time.Duration,
+	logger *slog.Logger,
+	done chan error,
+) {
 	defer close(done)
 
 	<-ctx.Done()

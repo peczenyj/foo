@@ -28,10 +28,22 @@ const (
 	LogFormatJSON = "json"
 )
 
-const maxPort = 65535
+const (
+	defaultPort            = 8080
+	defaultShutdownTimeout = 10 * time.Second
+	maxPort                = 65535
+)
 
 // ErrInvalid is returned, wrapped, for an invalid flag or environment value.
 var ErrInvalid = errors.New("invalid configuration")
+
+// Why a value is invalid, wrapped after ErrInvalid in the errors Parse returns.
+var (
+	errPortRange       = errors.New("must be between 0 and 65535")
+	errLogFormat       = errors.New(`must be "text" or "json"`)
+	errLogLevel        = errors.New("must be debug, info, warn or error")
+	errShutdownTimeout = errors.New("must be positive")
+)
 
 // Config holds the server settings.
 type Config struct {
@@ -47,10 +59,10 @@ type Config struct {
 func Default() Config {
 	return Config{
 		Host:            "",
-		Port:            8080,
+		Port:            defaultPort,
 		LogLevel:        slog.LevelInfo,
 		LogFormat:       LogFormatText,
-		ShutdownTimeout: 10 * time.Second,
+		ShutdownTimeout: defaultShutdownTimeout,
 	}
 }
 
@@ -69,16 +81,18 @@ func (c Config) Addr() string {
 func Parse(name string, args []string, getenv func(string) string, output io.Writer) (Config, error) {
 	cfg := Default()
 
-	envErr := cfg.readEnv(getenv)
+	envErr := readEnv(&cfg, getenv)
 
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(output)
 
 	fs.StringVar(&cfg.Host, "host", cfg.Host, "listen host, empty for all interfaces (env "+EnvHost+")")
 	fs.IntVar(&cfg.Port, "port", cfg.Port, "listen port, 0 for any free port (env "+EnvPort+")")
-	fs.TextVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "minimum log level: debug, info, warn or error (env "+EnvLogLevel+")")
+	fs.TextVar(&cfg.LogLevel, "log-level", cfg.LogLevel,
+		"minimum log level: debug, info, warn or error (env "+EnvLogLevel+")")
 	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "log format: text or json (env "+EnvLogFormat+")")
-	fs.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout, "grace period for in-flight requests on shutdown (env "+EnvShutdownTimeout+")")
+	fs.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout,
+		"grace period for in-flight requests on shutdown (env "+EnvShutdownTimeout+")")
 	fs.BoolVar(&cfg.ShowVersion, "version", false, "print the version and exit")
 
 	report := func(err error) error {
@@ -93,7 +107,7 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 
 	switch parseErr := fs.Parse(args); {
 	case errors.Is(parseErr, flag.ErrHelp):
-		return Config{}, parseErr
+		return Config{}, flag.ErrHelp
 	case parseErr != nil:
 		// flag has already reported parseErr and the usage.
 		return Config{}, errors.Join(fmt.Errorf("%w: %w", ErrInvalid, parseErr), report(envErr))
@@ -112,10 +126,10 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 	return cfg, nil
 }
 
-// readEnv overrides the defaults with the environment variables that are set.
-// It checks each value as validate does, and reports every invalid one; an
-// invalid value leaves the built-in default in place.
-func (c *Config) readEnv(getenv func(string) string) error {
+// readEnv overrides the defaults in c with the environment variables that are
+// set. It checks each value as validate does, and reports every invalid one;
+// an invalid value leaves the built-in default in place.
+func readEnv(c *Config, getenv func(string) string) error {
 	var errs []error
 
 	parse := func(name string, set func(string) error) {
@@ -164,15 +178,19 @@ func checked[T any](parse func(string) (T, error), check func(T) error) func(str
 func asString(v string) (string, error) { return v, nil }
 
 // parseLevel parses a log level name, such as "debug" or "warn".
-func parseLevel(v string) (level slog.Level, err error) {
-	err = level.UnmarshalText([]byte(v))
+func parseLevel(v string) (slog.Level, error) {
+	var level slog.Level
 
-	return level, err
+	if err := level.UnmarshalText([]byte(v)); err != nil {
+		return level, fmt.Errorf("%w: %w", errLogLevel, err)
+	}
+
+	return level, nil
 }
 
 func checkPort(port int) error {
 	if port < 0 || port > maxPort {
-		return fmt.Errorf("must be between 0 and %d", maxPort)
+		return errPortRange
 	}
 
 	return nil
@@ -180,7 +198,7 @@ func checkPort(port int) error {
 
 func checkLogFormat(format string) error {
 	if format != LogFormatText && format != LogFormatJSON {
-		return fmt.Errorf("must be %q or %q", LogFormatText, LogFormatJSON)
+		return errLogFormat
 	}
 
 	return nil
@@ -188,15 +206,26 @@ func checkLogFormat(format string) error {
 
 func checkShutdownTimeout(timeout time.Duration) error {
 	if timeout <= 0 {
-		return errors.New("must be positive")
+		return errShutdownTimeout
 	}
 
 	return nil
 }
 
+// NewLogger returns a logger writing to w in the configured format and level.
+func (c Config) NewLogger(w io.Writer) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: c.LogLevel}
+
+	if c.LogFormat == LogFormatJSON {
+		return slog.New(slog.NewJSONHandler(w, opts))
+	}
+
+	return slog.New(slog.NewTextHandler(w, opts))
+}
+
 // validate checks the values that parsing alone cannot. It reports every
 // invalid value, not just the first one.
-func (c *Config) validate() error {
+func (c Config) validate() error {
 	var errs []error
 
 	if err := checkPort(c.Port); err != nil {
@@ -212,15 +241,4 @@ func (c *Config) validate() error {
 	}
 
 	return errors.Join(errs...)
-}
-
-// NewLogger returns a logger writing to w in the configured format and level.
-func (c Config) NewLogger(w io.Writer) *slog.Logger {
-	opts := &slog.HandlerOptions{Level: c.LogLevel}
-
-	if c.LogFormat == LogFormatJSON {
-		return slog.New(slog.NewJSONHandler(w, opts))
-	}
-
-	return slog.New(slog.NewTextHandler(w, opts))
 }

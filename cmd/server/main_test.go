@@ -25,11 +25,36 @@ func TestRun(t *testing.T) {
 		stdout   string // expected exact output
 		stderr   string // expected substring
 	}{
-		{label: "should print the version and exit", args: []string{"-version"}, exitCode: exitOK, stdout: "foo dev (revision unknown)\n"},
-		{label: "should print the usage on -h", args: []string{"-h"}, exitCode: exitOK, stderr: "Usage of foo"},
-		{label: "should reject an unknown flag", args: []string{"-nope"}, exitCode: exitUsage, stderr: "flag provided but not defined"},
-		{label: "should reject an invalid port flag", args: []string{"-port=70000"}, exitCode: exitUsage, stderr: "invalid configuration"},
-		{label: "should reject an invalid FOO_PORT", env: map[string]string{"FOO_PORT": "abc"}, exitCode: exitUsage, stderr: "FOO_PORT"},
+		{
+			label:    "should print the version and exit",
+			args:     []string{"-version"},
+			exitCode: exitOK,
+			stdout:   "foo dev (revision unknown)\n",
+		},
+		{
+			label:    "should print the usage on -h",
+			args:     []string{"-h"},
+			exitCode: exitOK,
+			stderr:   "Usage of foo",
+		},
+		{
+			label:    "should reject an unknown flag",
+			args:     []string{"-nope"},
+			exitCode: exitUsage,
+			stderr:   "flag provided but not defined",
+		},
+		{
+			label:    "should reject an invalid port flag",
+			args:     []string{"-port=70000"},
+			exitCode: exitUsage,
+			stderr:   "invalid configuration",
+		},
+		{
+			label:    "should reject an invalid FOO_PORT",
+			env:      map[string]string{"FOO_PORT": "abc"},
+			exitCode: exitUsage,
+			stderr:   "FOO_PORT",
+		},
 	}
 
 	for _, tc := range testcases {
@@ -70,7 +95,7 @@ func TestRun_serves_until_cancelled(t *testing.T) {
 func TestRun_fails_if_the_address_is_in_use(t *testing.T) {
 	t.Parallel()
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 

@@ -14,7 +14,7 @@ import (
 	foomock "github.com/peczenyj/foo/mocks/github.com/peczenyj/foo/foo"
 )
 
-const mediaTypeJSON = "application/json"
+const wantContentType = "application/json"
 
 func TestAPI(t *testing.T) {
 	t.Parallel()
@@ -55,12 +55,44 @@ func TestAPI(t *testing.T) {
 			status: http.StatusInternalServerError,
 			logged: "secret db failure",
 		},
-		{label: "should return 404 for an unknown path", method: http.MethodGet, target: "/bar", status: http.StatusNotFound},
-		{label: "should return 404 for a trailing slash", method: http.MethodGet, target: "/foo/", status: http.StatusNotFound},
-		{label: "should be case sensitive", method: http.MethodGet, target: "/FOO", status: http.StatusNotFound},
-		{label: "should reject POST /foo", method: http.MethodPost, target: "/foo", status: http.StatusMethodNotAllowed, allow: "GET, HEAD"},
-		{label: "should reject DELETE /healthz", method: http.MethodDelete, target: "/healthz", status: http.StatusMethodNotAllowed, allow: "GET, HEAD"},
-		{label: "should report healthy", method: http.MethodGet, target: "/healthz", status: http.StatusOK},
+		{
+			label:  "should return 404 for an unknown path",
+			method: http.MethodGet,
+			target: "/bar",
+			status: http.StatusNotFound,
+		},
+		{
+			label:  "should return 404 for a trailing slash",
+			method: http.MethodGet,
+			target: "/foo/",
+			status: http.StatusNotFound,
+		},
+		{
+			label:  "should be case sensitive",
+			method: http.MethodGet,
+			target: "/FOO",
+			status: http.StatusNotFound,
+		},
+		{
+			label:  "should reject POST /foo",
+			method: http.MethodPost,
+			target: "/foo",
+			status: http.StatusMethodNotAllowed,
+			allow:  "GET, HEAD",
+		},
+		{
+			label:  "should reject DELETE /healthz",
+			method: http.MethodDelete,
+			target: "/healthz",
+			status: http.StatusMethodNotAllowed,
+			allow:  "GET, HEAD",
+		},
+		{
+			label:  "should report healthy",
+			method: http.MethodGet,
+			target: "/healthz",
+			status: http.StatusOK,
+		},
 	}
 
 	for _, tc := range testcases {
@@ -84,11 +116,11 @@ func TestAPI(t *testing.T) {
 
 			switch {
 			case tc.message != "":
-				assert.Equal(t, mediaTypeJSON, headers.Get("Content-Type"))
+				assert.Equal(t, wantContentType, headers.Get("Content-Type"))
 				assert.Equal(t, api.MessageBody{Message: tc.message}, decodeJSON[api.MessageBody](t, body))
 			case status >= http.StatusBadRequest:
 				// JSON only on success: errors keep the default response.
-				assert.NotEqual(t, mediaTypeJSON, headers.Get("Content-Type"))
+				assert.NotEqual(t, wantContentType, headers.Get("Content-Type"))
 				assert.NotContains(t, string(body), "secret")
 			default:
 				assert.Empty(t, body)

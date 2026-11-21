@@ -3,6 +3,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -83,10 +84,11 @@ func (a *API) writeJSON(w http.ResponseWriter, statusCode int, result any) error
 
 	w.WriteHeader(statusCode)
 
-	err := json.NewEncoder(w).Encode(result)
-	if err != nil {
+	if err := json.NewEncoder(w).Encode(result); err != nil {
 		a.logger.Warn("unexpected error while encoding the JSON response", slog.Any("error", err))
+
+		return fmt.Errorf("encode the JSON response: %w", err)
 	}
 
-	return err
+	return nil
 }

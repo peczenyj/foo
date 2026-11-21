@@ -21,7 +21,7 @@ func doRequest(t *testing.T,
 ) {
 	t.Helper()
 
-	request := httptest.NewRequest(method, target, nil)
+	request := httptest.NewRequestWithContext(t.Context(), method, target, nil)
 
 	w := httptest.NewRecorder()
 

@@ -28,27 +28,43 @@ func TestAPI_component(t *testing.T) {
 	t.Run("GET /foo replies bar", func(t *testing.T) {
 		t.Parallel()
 
-		resp, err := srv.Client().Get(srv.URL + "/foo")
-		require.NoError(t, err)
+		status, body, headers := get(t, srv, "/foo")
 
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-		assert.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		assert.Equal(t, http.StatusOK, status)
+		assert.Equal(t, wantContentType, headers.Get("Content-Type"))
 		assert.Equal(t, api.MessageBody{Message: "bar"}, decodeJSON[api.MessageBody](t, body))
 	})
 
 	t.Run("GET /bar is not found", func(t *testing.T) {
 		t.Parallel()
 
-		resp, err := srv.Client().Get(srv.URL + "/bar")
-		require.NoError(t, err)
+		status, _, _ := get(t, srv, "/bar")
 
-		defer resp.Body.Close()
-
-		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+		assert.Equal(t, http.StatusNotFound, status)
 	})
+}
+
+// get sends GET path to srv over the network and returns the response.
+func get(t *testing.T,
+	srv *httptest.Server,
+	path string,
+) (
+	statusCode int,
+	body []byte,
+	headers http.Header,
+) {
+	t.Helper()
+
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+path, nil)
+	require.NoError(t, err)
+
+	response, err := srv.Client().Do(request)
+	require.NoError(t, err)
+
+	defer response.Body.Close()
+
+	body, err = io.ReadAll(response.Body)
+	require.NoError(t, err, "reading the response body")
+
+	return response.StatusCode, body, response.Header
 }

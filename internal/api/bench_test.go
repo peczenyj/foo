@@ -26,16 +26,18 @@ func (w *discardWriter) reset() { clear(w.header) }
 
 // newGetFoo returns the handler and request of the GET /foo hot path:
 // routing, the real Fooer and JSON encoding, with logs discarded.
-func newGetFoo() (http.Handler, *http.Request) {
+func newGetFoo(b *testing.B) (http.Handler, *http.Request) {
+	b.Helper()
+
 	handler := api.New(foo.Bar{}, slog.New(slog.DiscardHandler))
 
-	return handler, httptest.NewRequest(http.MethodGet, "/foo", nil)
+	return handler, httptest.NewRequestWithContext(b.Context(), http.MethodGet, "/foo", nil)
 }
 
 // BenchmarkAPI_GetFoo measures GET /foo. Run it with make bench, which
 // repeats it and summarises time, bytes and allocations with benchstat.
 func BenchmarkAPI_GetFoo(b *testing.B) {
-	handler, request := newGetFoo()
+	handler, request := newGetFoo(b)
 	w := newDiscardWriter()
 
 	b.ReportAllocs()

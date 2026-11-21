@@ -35,3 +35,4 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - `.gitignore` covers editors, backups, build directories, env files, hidden notes, working docs (`docs/superpowers/`) and the local files of AI coding tools.
 - Mocks live in the root `mocks/` folder, one package per mocked package (`foomock.Fooer`), configured in `.mockery.yaml`.
 - Agent instructions live in `AGENTS.md`, shared by AI coding tools; `CLAUDE.md` only imports it (`@AGENTS.md`).
+- Stricter linting: 62 linters on top of the standard set, grouped by purpose (HTTP and context, errors, slog, testify, tests, modern Go, style), with line length, magic numbers, function length, blank-line style, interface parameter names and a blocklist of replaced dependencies. Config errors are now sentinel errors, so every invalid value reads `must be ...`.
