@@ -24,7 +24,7 @@ BENCH_PKG     ?= ./internal/api
 # bench-compare: the git ref to compare the working tree against.
 BASE          ?= devel
 # Coverage is measured on our code only: generated mocks are left out.
-COVER_PKGS     = $(shell $(GO) list ./... | grep -v '/mocks$$')
+COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^github.com/peczenyj/foo/mocks/')
 # Steps run in sequence, never as prerequisites: under make -j, prerequisites
 # may run in parallel, and generate must finish before anything else.
 STEP          := $(MAKE) --no-print-directory
@@ -119,7 +119,7 @@ test-functional: ## Functional tests: the hurl suite against a fresh bin/foo (ne
 test-integration: ## Integration tests (TestIntegration_*, build tag integration; may need Docker)
 	$(GOTESTSUM) -race -count=1 -tags integration -run '^TestIntegration' ./...
 
-mocks: ## Regenerate mocks with mockery (.mockery.yml)
+mocks: ## Regenerate mocks/ with mockery (.mockery.yaml)
 	$(GO) tool mockery
 
 tidy: ## go mod tidy + verify

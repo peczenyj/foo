@@ -70,7 +70,7 @@ invalid value is reported at startup, and the server exits with status 2.
   mod-check    Fail if go.mod/go.sum need tidying (read-only), then verify
   test-functional Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
   test-integration Integration tests (TestIntegration_*, build tag integration; may need Docker)
-  mocks        Regenerate mocks with mockery (.mockery.yml)
+  mocks        Regenerate mocks/ with mockery (.mockery.yaml)
   tidy         go mod tidy + verify
   vendor       go mod tidy + vendor + verify (vendor/ is git-ignored)
   docker       Build the Docker image

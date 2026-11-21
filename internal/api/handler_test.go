@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/peczenyj/foo/internal/api"
-	"github.com/peczenyj/foo/internal/api/mocks"
+	foomock "github.com/peczenyj/foo/mocks/github.com/peczenyj/foo/foo"
 )
 
 const mediaTypeJSON = "application/json"
@@ -21,7 +21,7 @@ func TestAPI(t *testing.T) {
 
 	testcases := []struct {
 		label   string
-		setup   func(m *mocks.MockFooer) // nil: Foo must not be called
+		setup   func(m *foomock.Fooer) // nil: Foo must not be called
 		method  string
 		target  string
 		status  int
@@ -31,7 +31,7 @@ func TestAPI(t *testing.T) {
 	}{
 		{
 			label:   "should reply the Fooer message",
-			setup:   func(m *mocks.MockFooer) { m.EXPECT().Foo(mock.Anything).Return("bar", nil).Once() },
+			setup:   func(m *foomock.Fooer) { m.EXPECT().Foo(mock.Anything).Return("bar", nil).Once() },
 			method:  http.MethodGet,
 			target:  "/foo",
 			status:  http.StatusOK,
@@ -39,7 +39,7 @@ func TestAPI(t *testing.T) {
 		},
 		{
 			label:   "should reply whatever the Fooer returns",
-			setup:   func(m *mocks.MockFooer) { m.EXPECT().Foo(mock.Anything).Return("baz", nil).Once() },
+			setup:   func(m *foomock.Fooer) { m.EXPECT().Foo(mock.Anything).Return("baz", nil).Once() },
 			method:  http.MethodGet,
 			target:  "/foo",
 			status:  http.StatusOK,
@@ -47,7 +47,7 @@ func TestAPI(t *testing.T) {
 		},
 		{
 			label: "should hide the Fooer error",
-			setup: func(m *mocks.MockFooer) {
+			setup: func(m *foomock.Fooer) {
 				m.EXPECT().Foo(mock.Anything).Return("", errors.New("secret db failure")).Once()
 			},
 			method: http.MethodGet,
@@ -67,9 +67,9 @@ func TestAPI(t *testing.T) {
 		t.Run(tc.label, func(t *testing.T) {
 			t.Parallel()
 
-			// NewMockFooer asserts the expectations on cleanup: a case
+			// NewFooer asserts the expectations on cleanup: a case
 			// without setup fails if Foo is called.
-			fooer := mocks.NewMockFooer(t)
+			fooer := foomock.NewFooer(t)
 			if tc.setup != nil {
 				tc.setup(fooer)
 			}
@@ -117,5 +117,5 @@ func TestNew_panics_on_nil_Fooer(t *testing.T) {
 func TestNew_panics_on_nil_Logger(t *testing.T) {
 	t.Parallel()
 
-	assert.PanicsWithValue(t, "api.New: nil Logger", func() { api.New(mocks.NewMockFooer(t), nil) })
+	assert.PanicsWithValue(t, "api.New: nil Logger", func() { api.New(foomock.NewFooer(t), nil) })
 }
