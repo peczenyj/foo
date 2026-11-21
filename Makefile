@@ -6,7 +6,7 @@ REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 LDFLAGS       := -s -w -X main.version=$(VERSION) -X main.revision=$(REVISION)
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test cover lint fmt fmt-check mocks tidy vendor clean
+.PHONY: help build run test cover lint fmt fmt-check mocks hurl tidy vendor clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-10s %s\n",$$1,$$2}'
@@ -33,6 +33,9 @@ fmt: ## Format the code (gofumpt + gci)
 
 fmt-check: ## Fail if any file is not formatted
 	$(GOLANGCI_LINT) fmt --diff ./...
+
+hurl: ## Run the hurl suite against a fresh server (needs hurl)
+	scripts/hurl.sh
 
 mocks: ## Regenerate mocks with mockery (.mockery.yml)
 	$(GO) tool mockery
