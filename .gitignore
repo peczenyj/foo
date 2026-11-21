@@ -19,8 +19,9 @@ coverage.xml
 *.coverprofile
 profile.cov
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# Dependency directories: go.mod/go.sum pin the dependencies; `make vendor`
+# creates vendor/ locally, it is never committed.
+vendor/
 
 # Go workspace file
 go.work

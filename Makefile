@@ -6,7 +6,7 @@ REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 LDFLAGS       := -s -w -X main.version=$(VERSION) -X main.revision=$(REVISION)
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test cover lint fmt fmt-check mocks tidy clean
+.PHONY: help build run test cover lint fmt fmt-check mocks tidy vendor clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-10s %s\n",$$1,$$2}'
@@ -39,6 +39,9 @@ mocks: ## Regenerate mocks with mockery (.mockery.yml)
 
 tidy: ## go mod tidy + verify
 	$(GO) mod tidy && $(GO) mod verify
+
+vendor: ## go mod tidy + vendor + verify (vendor/ is git-ignored)
+	$(GO) mod tidy && $(GO) mod vendor && $(GO) mod verify
 
 clean: ## Remove build artefacts
 	rm -rf bin coverage.out
