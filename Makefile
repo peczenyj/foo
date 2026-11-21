@@ -6,6 +6,9 @@ VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || ech
 REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION_FLAGS := -X main.version=$(VERSION) -X main.revision=$(REVISION)
 LDFLAGS       := -s -w $(VERSION_FLAGS)
+COVERPROFILE  ?= coverage.out
+# Coverage is measured on our code only: generated mocks are left out.
+COVER_PKGS     = $(shell $(GO) list ./... | grep -v '/mocks$$')
 
 .DEFAULT_GOAL := help
 .PHONY: help build build-debug run test cover lint fmt fmt-check mocks hurl tidy vendor docker clean
@@ -25,9 +28,9 @@ run: ## Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
 test: ## Run all tests with the race detector
 	$(GO) test -race -count=1 ./...
 
-cover: ## Run tests with a coverage summary
-	$(GO) test -race -covermode=atomic -coverprofile=coverage.out ./...
-	$(GO) tool cover -func=coverage.out | tail -1
+cover: ## Run tests with a coverage summary (mocks excluded)
+	$(GO) test -race -covermode=atomic -coverprofile=$(COVERPROFILE) $(COVER_PKGS)
+	$(GO) tool cover -func=$(COVERPROFILE) | tail -1
 
 lint: ## go vet + golangci-lint linters
 	$(GO) vet ./...

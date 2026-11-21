@@ -1,0 +1,4 @@
+# Generated mocks are not our code: keep them out of the coverage numbers.
+# make cover already leaves them out of the profile; this guards Codecov too.
+ignore:
+  - "internal/api/mocks"

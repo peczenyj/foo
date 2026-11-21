@@ -54,11 +54,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # make cover leaves the generated mocks out of the coverage.
       - name: Test (race + coverage)
-        run: go test -race -covermode=atomic -coverprofile=coverage.txt ./...
-
-      - name: Coverage summary
-        run: go tool cover -func=coverage.txt | tail
+        run: make cover COVERPROFILE=coverage.txt
 
       - name: Upload results to Codecov
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5

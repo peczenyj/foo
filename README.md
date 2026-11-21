@@ -55,7 +55,7 @@ invalid value is reported at startup, and the server exits with status 2.
   build-debug  Build bin/foo-debug with debug symbols, no optimizations (for dlv)
   run          Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
   test         Run all tests with the race detector
-  cover        Run tests with a coverage summary
+  cover        Run tests with a coverage summary (mocks excluded)
   lint         go vet + golangci-lint linters
   fmt          Format the code (gofumpt + gci)
   fmt-check    Fail if any file is not formatted
