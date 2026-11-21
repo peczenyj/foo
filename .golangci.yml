@@ -92,6 +92,12 @@ linters:
       require-specific: true
     revive:
       severity: warning
+    sloglint:
+      # Project choice: log without a context (logger.Error, not ErrorContext)
+      # unless a handler actually reads values from it; the global slog logger
+      # is fine too. Both are sloglint's defaults, set here on purpose.
+      context: ""
+      no-global: ""
     testifylint:
       enable-all: true
     thelper:

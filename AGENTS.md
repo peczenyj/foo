@@ -29,6 +29,7 @@ This file provides guidance to AI coding agents (Claude Code, Codex, Gemini CLI,
 
 - Branches: `devel` is the default branch and the target of feature PRs; `main` is release-only and protected (PRs from `devel`, CI must pass). Never push to `main` directly.
 - Tests use testify (`require` when the test can't continue, `assert` otherwise), call `t.Parallel()`, and never bind fixed ports.
+- Logging: `logger.Error(...)`, not `ErrorContext(ctx, ...)`: nothing reads values from the context, and a cancelled request context must never look like it could affect logging. The global `slog` logger is acceptable too. `sloglint` is configured accordingly (`context: ""`, `no-global: ""`).
 - Imports are grouped std / third-party / `github.com/peczenyj/foo` (gci); `make fmt` fixes them.
 - `CHANGELOG.md` is append-only: add bullets at the end, under `## [Unreleased]` (the last section). `.gitattributes` sets `merge=union` on it.
 - `docs/superpowers/` (design specs, plans) and hidden `.*.md` notes are git-ignored: local working docs, never committed.

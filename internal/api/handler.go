@@ -65,7 +65,7 @@ func (a *API) handleFoo(w http.ResponseWriter, r *http.Request) {
 	message, err := a.fooer.Foo(r.Context())
 	if err != nil {
 		// The error stays in the logs: the client only learns it failed.
-		a.logger.ErrorContext(r.Context(), "fooer failed", slog.Any("error", err))
+		a.logger.Error("fooer failed", slog.Any("error", err))
 
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 
