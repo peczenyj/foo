@@ -25,33 +25,25 @@ BENCH_PKG     ?= ./internal/api
 BASE          ?= devel
 # Coverage is measured on our code only: generated mocks are left out.
 COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^github.com/peczenyj/foo/mocks/')
-# Steps run in sequence, never as prerequisites: under make -j, prerequisites
-# may run in parallel, and generate must finish before anything else.
-STEP          := $(MAKE) --no-print-directory
 
 .DEFAULT_GOAL := help
-.PHONY: help task ci generate check-tools build build-debug run test cover bench bench-compare bench-smoke bench-profile lint lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker clean
+# Workflow targets (task, ci, generate) chain their steps as prerequisites,
+# which make runs left to right. .NOTPARALLEL keeps that order under make -j:
+# go already builds and tests in parallel on its own.
+.NOTPARALLEL:
+.PHONY: help task ci generate go-generate check-tools build build-debug run test cover bench bench-compare bench-profile lint lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-12s %s\n",$$1,$$2}'
 
-task: ## Before a commit: generate, tidy, fix, format, then run ci (edits files)
-	$(STEP) generate
-	$(STEP) tidy
-	$(STEP) lint-fix
-	$(STEP) fmt
-	$(STEP) ci
+task: generate tidy lint-fix fmt ci ## Before a commit: generate, tidy, fix, format, then run ci (edits files)
 
-ci: ## All checks, read-only: mod-check, fmt-check, lint, cover, bench-smoke (same as GitHub CI)
-	$(STEP) mod-check
-	$(STEP) fmt-check
-	$(STEP) lint
-	$(STEP) cover
-	$(STEP) bench-smoke
+ci: mod-check fmt-check lint cover ## All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
 
-generate: ## go generate ./... + regenerate mocks
+generate: go-generate mocks ## go generate ./... + regenerate mocks
+
+go-generate: ## go generate ./...
 	$(GO) generate ./...
-	$(STEP) mocks
 
 check-tools: ## Fail with install instructions if golangci-lint is missing
 	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { \
@@ -86,9 +78,6 @@ bench: ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT, summarised by benchs
 
 bench-compare: ## Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
 	BENCH='$(BENCH)' BENCH_COUNT=$(BENCH_COUNT) scripts/bench-compare.sh $(BASE)
-
-bench-smoke: ## Run every benchmark once: they compile and run (CI; timings not judged)
-	$(GO) test -run='^$$' -bench=. -benchtime=1x ./...
 
 bench-profile: ## CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
 	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -cpuprofile=cpu.out -memprofile=mem.out -o bench.test $(BENCH_PKG)

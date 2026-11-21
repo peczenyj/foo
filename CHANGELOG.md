@@ -29,7 +29,7 @@ open a new `## [Unreleased]` below it. `.gitattributes` merges this file with
 - `make task` (generate, tidy, fix, format, then ci) to run before committing; `make ci` runs every check read-only, as GitHub CI does; plus `make generate`, `make lint-fix` and `make mod-check`. CI now checks that go.mod/go.sum are tidy.
 - `make check-tools`: the lint and format targets stop with the install link if golangci-lint is missing, and warn when its version differs from the one CI pins (2.15.0).
 - Tests run through gotestsum (pinned in `go.mod` as a tool): `make test` and `make cover` use it, and CI uses its `github-actions` format.
-- `BenchmarkAPI_GetFoo` and `make bench` (benchstat summary of time, B/op and allocs/op), `make bench-profile` and `make bench-smoke` (in `make ci` and CI).
+- `BenchmarkAPI_GetFoo` and `make bench` (benchstat summary of time, B/op and allocs/op), and `make bench-profile`; neither `make task`, `make ci` nor CI runs benchmarks.
 - `make bench-compare BASE=<ref>` compares benchmarks before and after a change with benchstat.
 - Test layers named for what they test: the in-process test with the real `Fooer` is a component test (`component_test.go`); `make test-integration` runs `//go:build integration` tests (an example that skips for now), and the hurl suite runs with `make test-functional`.
 - `.gitignore` covers editors, backups, build directories, env files, hidden notes, working docs (`docs/superpowers/`) and the local files of AI coding tools.

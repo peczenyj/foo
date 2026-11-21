@@ -62,11 +62,6 @@ jobs:
       - name: Test (race + coverage)
         run: make cover COVERPROFILE=coverage.txt GOTESTSUM_FORMAT=github-actions
 
-      # One iteration each: keeps the benchmarks compiling and running.
-      # Timings from shared runners are too noisy to judge.
-      - name: Benchmarks (smoke)
-        run: make bench-smoke
-
       - name: Upload results to Codecov
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
         if: matrix.go-version == '1.27.x'

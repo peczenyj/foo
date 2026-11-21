@@ -51,8 +51,9 @@ invalid value is reported at startup, and the server exits with status 2.
 ```text
   help         Show available targets
   task         Before a commit: generate, tidy, fix, format, then run ci (edits files)
-  ci           All checks, read-only: mod-check, fmt-check, lint, cover, bench-smoke (same as GitHub CI)
+  ci           All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
   generate     go generate ./... + regenerate mocks
+  go-generate  go generate ./...
   check-tools  Fail with install instructions if golangci-lint is missing
   build        Build the server binary into bin/
   build-debug  Build bin/foo-debug with debug symbols, no optimizations (for dlv)
@@ -61,7 +62,6 @@ invalid value is reported at startup, and the server exits with status 2.
   cover        Run tests with a coverage summary (mocks excluded)
   bench        Benchmarks (time, B/op, allocs/op) x BENCH_COUNT, summarised by benchstat into bench.out
   bench-compare Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
-  bench-smoke  Run every benchmark once: they compile and run (CI; timings not judged)
   bench-profile CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
   lint         go vet + golangci-lint linters
   lint-fix     go fix + golangci-lint --fix (edits files)
@@ -131,8 +131,9 @@ All Go tests use [testify](https://github.com/stretchr/testify).
   no significant change). `BENCH=GetFoo` narrows it to one benchmark.
 - `make bench-profile` writes CPU and memory profiles for `go tool pprof`.
 
-CI only runs each benchmark once (`make bench-smoke`) so they keep compiling
-and running; shared runners are too noisy to judge timings.
+Neither CI nor `make task` runs benchmarks: shared runners are too noisy to
+judge timings. They still compile with every `make test`, since `go test`
+builds them.
 
 After changing the `Fooer` interface, run `make mocks` and commit the result:
 CI fails when the mocks are stale.
