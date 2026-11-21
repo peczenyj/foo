@@ -5,7 +5,8 @@ Date: 2026-11-21
 ## Intent
 
 A small Go HTTP service that serves as an example of good practices.
-`GET /foo` replies `{"message":"bar"}`; any other path returns a JSON error.
+`GET /foo` replies `{"message":"bar"}`; anything else gets the standard HTTP
+error status (404, 405, 500) with no JSON body.
 The value is in the scaffolding around it: an interface-driven handler, a
 generated mock, layered tests (unit with mock, integration with the real
 implementation, black-box hurl), CLI/env configuration, structured logging,
@@ -72,12 +73,13 @@ handler's 500 path can be tested with the mock.
 ### `internal/api`
 
 - `New(f foo.Fooer) *API` — panics on nil (wiring bug), like the blueprint.
-- Routes: `GET /healthz` → 200 empty; `GET /foo` → 200 `{"message":"bar"}`;
-  anything else → 404 `{"error":"not found"}`; wrong method on a known path →
-  405 JSON error (`{"error":"method not allowed"}`) with the `Allow` header kept.
-- `Fooer` error → 500 `{"error":"internal error"}`, error logged.
-- All bodies `Content-Type: application/json`, via a `writeJSON` helper as in
-  the blueprint.
+- Routes: `GET /healthz` → 200 empty; `GET /foo` → 200 `{"message":"bar"}`
+  with `Content-Type: application/json`, via a `writeJSON` helper as in the
+  blueprint. JSON is only for this success case.
+- Errors are the standard HTTP status with no JSON body: unknown path → 404
+  and wrong method → 405 (with `Allow`), both left to `http.ServeMux`'s
+  defaults; `Fooer` error → `http.Error(w, http.StatusText(500), 500)`, error
+  logged, its text never sent to the client.
 
 ### `internal/config`
 
@@ -108,7 +110,7 @@ mockery's testify template.
 - `cmd/server`: `run()` tests for `-version`, `-h`, bad flags, start+cancel on
   port 0, address-in-use.
 - `test/hurl/foo.hurl`: `GET /foo` → 200, `jsonpath "$.message" == "bar"`;
-  `GET /bar` → 404, `jsonpath "$.error" exists`; `GET /healthz` → 200.
+  `GET /bar` → 404; `POST /foo` → 405; `GET /healthz` → 200.
 
 ### Tooling
 

@@ -16,7 +16,7 @@
 - No third-party runtime dependency. testify and mockery are test/tool only.
 - Env var prefix `FOO_`: `FOO_HOST`, `FOO_PORT`, `FOO_LOG_LEVEL`, `FOO_LOG_FORMAT`, `FOO_SHUTDOWN_TIMEOUT`. Precedence flag > env > default.
 - Defaults: host `""`, port `8080`, log level `info`, log format `text`, shutdown timeout `10s`.
-- Response bodies: `{"message":"bar"}`, `{"error":"not found"}`, `{"error":"method not allowed"}`, `{"error":"internal error"}`; always `Content-Type: application/json`.
+- JSON only on success: `GET /foo` → 200 `{"message":"bar"}`, `Content-Type: application/json`. Errors are the standard status with no JSON body: 404 and 405 from `http.ServeMux`'s defaults, 500 via `http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)`. Tests check error status codes only (plus `Allow` on 405), never error bodies.
 - Exit codes: 0 ok, 1 server failure, 2 usage/config error.
 - Every test calls `t.Parallel()`; no fixed ports in Go tests (use port 0 / `httptest`).
 - Every test asserts with testify: `require` when the test cannot continue after a failure (errors, decoding, setup), `assert` otherwise. No hand-written `if … { t.Fatalf }` comparisons. Where a blueprint test is "copied", translate its checks to testify.
@@ -25,11 +25,11 @@
 
 ## Review Focus
 
-1. `POST /foo` (any non-GET/HEAD method on a known path) → 405 JSON with `Allow: GET, HEAD`, not ServeMux's plain-text 405 or our 404. Test in Task 2.
-2. `/foo/` and `/FOO` → 404 JSON (exact, case-sensitive match). Test in Task 2.
+1. `POST /foo` (any non-GET/HEAD method on a known path) → 405 with `Allow: GET, HEAD`, not 404. Test in Task 2.
+2. `/foo/` and `/FOO` → 404 (exact, case-sensitive match). Test in Task 2.
 3. IPv6 host (`-host=::1`) → listen address `[::1]:8080`, not `::1:8080`. Test in Task 3.
 4. Invalid `FOO_PORT` (`abc`, `70000`, `-1`) → exit 2, stderr names `FOO_PORT`, even when `-port` is also passed. Tests in Task 3.
-5. A `Fooer` error's text never reaches the response body (only `internal error`); it is logged. Test in Task 2.
+5. A `Fooer` error's text never reaches the response body; the client gets a plain 500 and the error is logged. Test in Task 2.
 
 ---
 
@@ -85,7 +85,7 @@ func TestBar_Foo(t *testing.T) {
 - Consumes: `foo.Fooer`, `foo.Bar` (Task 1).
 - Produces:
   - `package api`: `func New(f foo.Fooer) *API` (panics `"api.New: nil Fooer"` on nil); `func (a *API) ServeHTTP(http.ResponseWriter, *http.Request)`.
-  - `type MessageBody struct { Message string \`json:"message"\` }`, `type ErrorBody struct { Error string \`json:"error"\` }`.
+  - `type MessageBody struct { Message string \`json:"message"\` }` (no error body type).
   - `package mocks`: `MockFooer`, `NewMockFooer(t)`, `EXPECT().Foo(...)` (mockery testify template).
   - Make target `mocks: ## Regenerate mocks with mockery` → `$(GO) tool mockery`.
 
@@ -118,25 +118,24 @@ packages:
 |---|---|---|---|---|---|
 | should reply the Fooer message | `EXPECT().Foo(mock.Anything).Return("bar", nil).Once()` | `GET /foo` | 200 | `MessageBody{"bar"}` | content type `application/json` |
 | should reply whatever the Fooer returns | `Return("baz", nil)` | `GET /foo` | 200 | `MessageBody{"baz"}` | proves the handler doesn't hardcode |
-| should hide the Fooer error | `Return("", errors.New("secret db failure"))` | `GET /foo` | 500 | `ErrorBody{"internal error"}` | body does not contain `secret` |
-| should return 404 for an unknown path | none | `GET /bar` | 404 | `ErrorBody{"not found"}` | |
-| should return 404 for a trailing slash | none | `GET /foo/` | 404 | `ErrorBody{"not found"}` | |
-| should be case sensitive | none | `GET /FOO` | 404 | `ErrorBody{"not found"}` | |
-| should reject POST /foo | none | `POST /foo` | 405 | `ErrorBody{"method not allowed"}` | `Allow: GET, HEAD` |
-| should reject DELETE /healthz | none | `DELETE /healthz` | 405 | `ErrorBody{"method not allowed"}` | `Allow: GET, HEAD` |
+| should hide the Fooer error | `Return("", errors.New("secret db failure"))` | `GET /foo` | 500 | not checked | body does not contain `secret` |
+| should return 404 for an unknown path | none | `GET /bar` | 404 | not checked | |
+| should return 404 for a trailing slash | none | `GET /foo/` | 404 | not checked | |
+| should be case sensitive | none | `GET /FOO` | 404 | not checked | |
+| should reject POST /foo | none | `POST /foo` | 405 | not checked | `Allow: GET, HEAD` |
+| should reject DELETE /healthz | none | `DELETE /healthz` | 405 | not checked | `Allow: GET, HEAD` |
 | should report healthy | none | `GET /healthz` | 200 | empty | |
 
-Assertions: `assert.Equal` on status and decoded body, `assert.Equal(t, "application/json", headers.Get("Content-Type"))`, `assert.Equal(t, "GET, HEAD", headers.Get("Allow"))`, `assert.NotContains(t, string(body), "secret")`. Plus `TestNew_panics_on_nil_Fooer` with `assert.PanicsWithValue(t, "api.New: nil Fooer", …)`. Mock expectations are asserted automatically by `NewMockFooer(t)` cleanup, so a case with no setup fails if `Foo` is called.
+Assertions: `assert.Equal` on status; for 200 `/foo` cases also decoded body and `assert.Equal(t, "application/json", headers.Get("Content-Type"))`; for error cases `assert.NotEqual(t, "application/json", headers.Get("Content-Type"))`; `assert.Equal(t, "GET, HEAD", headers.Get("Allow"))` on 405; `assert.NotContains(t, string(body), "secret")` on 500. Plus `TestNew_panics_on_nil_Fooer` with `assert.PanicsWithValue(t, "api.New: nil Fooer", …)`. Mock expectations are asserted automatically by `NewMockFooer(t)` cleanup, so a case with no setup fails if `Foo` is called.
 
-- [ ] **Step 6: Write the failing integration test** `integration_test.go`: `TestAPI_with_real_Fooer` — `srv := httptest.NewServer(api.New(foo.Bar{}))`, `t.Cleanup(srv.Close)`; `require.NoError` on each request; `http.Get(srv.URL + "/foo")` → 200, `Content-Type: application/json`, decoded `MessageBody{"bar"}`; `http.Get(srv.URL + "/bar")` → 404, `ErrorBody{"not found"}`. Close response bodies (bodyclose lint).
+- [ ] **Step 6: Write the failing integration test** `integration_test.go`: `TestAPI_with_real_Fooer` — `srv := httptest.NewServer(api.New(foo.Bar{}))`, `t.Cleanup(srv.Close)`; `require.NoError` on each request; `http.Get(srv.URL + "/foo")` → 200, `Content-Type: application/json`, decoded `MessageBody{"bar"}`; `http.Get(srv.URL + "/bar")` → 404. Close response bodies (bodyclose lint).
 
 - [ ] **Step 7: Run** `go test ./internal/api/` — Expected: FAIL (`undefined: api.New`).
 
-- [ ] **Step 8: Implement `internal/api/handler.go`.** Routing on a `ServeMux`:
-  - `GET /healthz` → 200 empty; `GET /foo` → calls `Foo(r.Context())`, 200 `MessageBody`, or logs the error with `slog.Error` and writes 500 `internal error`.
-  - Method-less `/healthz` and `/foo` → 405 handler setting `Allow: GET, HEAD` (Go's mux prefers the more specific `GET /foo`, so only other methods reach it).
-  - `/` → 404 `not found` (catch-all; it never sees `/foo` or `/healthz` because the method-less patterns match first).
-  - `writeJSON(w, status, v) error` as the blueprint's.
+- [ ] **Step 8: Implement `internal/api/handler.go`.** A `ServeMux` with only two patterns, as the blueprint's `New`:
+  - `GET /healthz` → 200 empty.
+  - `GET /foo` → calls `Foo(r.Context())`; on success `writeJSON(w, 200, &MessageBody{Message: msg})` (`writeJSON` as the blueprint's); on error `slog.Error(..., slog.Any("error", err))` then `http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)`.
+  - No catch-all and no custom 404/405 handlers: the mux's defaults produce 404 and 405 (with `Allow`).
 
 - [ ] **Step 9: Run** `go test -race ./internal/api/` — Expected: PASS. Then `make test lint fmt-check` — PASS.
 
@@ -215,15 +214,11 @@ jsonpath "$.message" == "bar"
 
 GET {{base_url}}/bar
 HTTP 404
-[Asserts]
-header "Content-Type" == "application/json"
-jsonpath "$.error" == "not found"
 
 POST {{base_url}}/foo
 HTTP 405
 [Asserts]
 header "Allow" == "GET, HEAD"
-jsonpath "$.error" == "method not allowed"
 
 GET {{base_url}}/healthz
 HTTP 200
@@ -269,9 +264,9 @@ HTTP 200
 
 - [ ] **Step 5: dependabot.yml** — gomod + github-actions weekly, as the blueprint.
 
-- [ ] **Step 6: README.md** — what it is; endpoints and responses (the four bodies from Global Constraints); config table from the spec; `make` targets (paste `make help`); how tests are layered (mock unit tests, real-`Fooer` integration test, hurl); how to regenerate mocks.
+- [ ] **Step 6: README.md** — what it is; endpoints and responses (JSON on `GET /foo` success; plain 404/405/500 otherwise); config table from the spec; `make` targets (paste `make help`); how tests are layered (mock unit tests, real-`Fooer` integration test, hurl); how to regenerate mocks.
 
-- [ ] **Step 7: CLAUDE.md** — keep the required header; replace the "no code yet" content with: the `make` commands incl. single-test form `go test -race -run '^TestName$' ./internal/api/`, `make mocks` after changing `Fooer`, `make fmt` vs `make fmt-check`, `make hurl`; a short architecture paragraph (config → logger → api → Fooer; routing/404/405 rules live in `internal/api/handler.go`; mocks are generated, never hand-edited).
+- [ ] **Step 7: CLAUDE.md** — keep the required header; replace the "no code yet" content with: the `make` commands incl. single-test form `go test -race -run '^TestName$' ./internal/api/`, `make mocks` after changing `Fooer`, `make fmt` vs `make fmt-check`, `make hurl`; a short architecture paragraph (config → logger → api → Fooer; routes live in `internal/api/handler.go`, JSON only on success and 404/405 left to `http.ServeMux` defaults; mocks are generated, never hand-edited).
 
 - [ ] **Step 8: Run** `make test lint fmt-check hurl` — Expected: all pass.
 
