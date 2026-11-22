@@ -7,7 +7,8 @@
 #
 # The kit is the template's files listed in SHARED below, then the kit's own
 # files from _kit/ on top (they replace or add: the lite Makefile, AGENTS.md,
-# CI files, tests with a hand-written fake instead of mocks), and
+# CI files, lean .gitignore and .dockerignore, tests with a hand-written fake
+# instead of mocks), and
 # .golangci.lite.yml as .golangci.yml. It is assembled and renamed
 # (scripts/rename.sh) in a temporary directory, its go.mod tidied, and only
 # then copied into <dest> (created if missing): a failure leaves <dest>
@@ -22,8 +23,6 @@ dest=$1 module=$2 name=$3
 
 # The template's files the kit uses as they are.
 SHARED=(
-  .dockerignore
-  .gitignore
   CLAUDE.md
   Dockerfile
   go.mod

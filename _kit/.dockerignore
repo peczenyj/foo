@@ -1,0 +1,14 @@
+.git
+.github
+.gitlab-ci.yml
+.cache
+coverage.*
+*.out
+*.test
+Dockerfile
+bin
+vendor
+# Local files: secrets stay out of the build context.
+.env
+.env.*
+.claude

@@ -311,8 +311,8 @@ Dependabot. It keeps:
   a hand-written fake `Fooer` instead of mocks;
 - a lite Makefile (`build`, `run`, `test`, `cover`, `lint`, `fmt`, `task`,
   `ci`, `docker`…), whose only tool to install is golangci-lint;
-- `.golangci.lite.yml` as `.golangci.yml`, the Dockerfile, `.dockerignore`,
-  `.gitignore`;
+- `.golangci.lite.yml` as `.golangci.yml`, the Dockerfile, and a lean
+  `.gitignore` and `.dockerignore` of its own;
 - a GitHub workflow and a `.gitlab-ci.yml` with lint, test and docker jobs;
 - `AGENTS.md`, trimmed, and `CLAUDE.md`.
 
