@@ -30,8 +30,14 @@ OASDIFF       ?= oasdiff
 OASDIFF_MOD     := github.com/oasdiff/oasdiff
 OASDIFF_PKG     := $(OASDIFF_MOD)
 OASDIFF_VERSION := v1.39.0
+# gocover-cobertura converts the coverage profile to Cobertura XML, the format
+# of GitLab's merge request coverage (make cover-cobertura, .gitlab-ci.yml).
+GOCOVER_COBERTURA     ?= gocover-cobertura
+GOCOVER_COBERTURA_MOD     := github.com/boumenot/gocover-cobertura
+GOCOVER_COBERTURA_PKG     := $(GOCOVER_COBERTURA_MOD)
+GOCOVER_COBERTURA_VERSION := v1.5.0
 # install-tools installs these (TOOLS=gotestsum to pick).
-TOOLS         ?= mockery gotestsum benchstat vacuum oasdiff
+TOOLS         ?= mockery gotestsum benchstat vacuum oasdiff gocover-cobertura
 # Lint profile: full (.golangci.yml, what CI runs) or lite (.golangci.lite.yml:
 # correctness only, for short, time-boxed work). A project switches with this
 # one line; make lint LINT_PROFILE=lite tries it once.
@@ -58,6 +64,8 @@ REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION_FLAGS := -X main.version=$(VERSION) -X main.revision=$(REVISION)
 LDFLAGS       := -s -w $(VERSION_FLAGS)
 COVERPROFILE  ?= coverage.out
+# make cover-cobertura converts COVERPROFILE to this Cobertura XML report.
+COBERTURA     ?= coverage.xml
 # Tests run through gotestsum; flags after -- go to go test.
 # Formats: pkgname (default), testname, dots, github-actions.
 GOTESTSUM_FORMAT ?= pkgname
@@ -78,7 +86,7 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^$(MODULE)/mocks/')
 # which make runs left to right. .NOTPARALLEL keeps that order under make -j:
 # go already builds and tests in parallel on its own.
 .NOTPARALLEL:
-.PHONY: help task ci generate go-generate check-tools check-golangci-lint check-mockery check-gotestsum check-benchstat check-vacuum check-oasdiff install-tools build build-debug run test cover bench bench-compare bench-profile lint lint-profiles openapi-lint openapi-breaking lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker rename rename-files clean
+.PHONY: help task ci generate go-generate check-tools check-golangci-lint check-mockery check-gotestsum check-benchstat check-vacuum check-oasdiff check-gocover-cobertura install-tools build build-debug run test cover cover-cobertura bench bench-compare bench-profile lint lint-profiles openapi-lint openapi-breaking lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker rename rename-files clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-17s %s\n",$$1,$$2}'
@@ -92,7 +100,7 @@ generate: go-generate mocks ## go generate ./... + regenerate mocks
 go-generate: ## go generate ./...
 	$(GO) generate ./...
 
-check-tools: check-golangci-lint check-mockery check-gotestsum check-benchstat check-vacuum check-oasdiff ## Check every tool: missing → error with how to install it; other version → warning
+check-tools: check-golangci-lint check-mockery check-gotestsum check-benchstat check-vacuum check-oasdiff check-gocover-cobertura ## Check every tool: missing → error with how to install it; other version → warning
 
 # Each target checks only the tools it runs.
 check-golangci-lint:
@@ -113,13 +121,17 @@ check-vacuum:
 check-oasdiff:
 	@bash scripts/check-tool.sh OASDIFF $(OASDIFF) $(OASDIFF_MOD) $(OASDIFF_VERSION) "make install-tools TOOLS=oasdiff"
 
-install-tools: ## go install the pinned mockery, gotestsum, benchstat, vacuum and oasdiff (TOOLS=gotestsum picks; needs network)
-	$(if $(filter-out mockery gotestsum benchstat vacuum oasdiff,$(TOOLS)),$(error unknown TOOLS: $(filter-out mockery gotestsum benchstat vacuum oasdiff,$(TOOLS)); known: mockery gotestsum benchstat vacuum oasdiff))
+check-gocover-cobertura:
+	@bash scripts/check-tool.sh GOCOVER_COBERTURA $(GOCOVER_COBERTURA) $(GOCOVER_COBERTURA_MOD) $(GOCOVER_COBERTURA_VERSION) "make install-tools TOOLS=gocover-cobertura"
+
+install-tools: ## go install the pinned mockery, gotestsum, benchstat, vacuum, oasdiff and gocover-cobertura (TOOLS=gotestsum picks; needs network)
+	$(if $(filter-out mockery gotestsum benchstat vacuum oasdiff gocover-cobertura,$(TOOLS)),$(error unknown TOOLS: $(filter-out mockery gotestsum benchstat vacuum oasdiff gocover-cobertura,$(TOOLS)); known: mockery gotestsum benchstat vacuum oasdiff gocover-cobertura))
 	$(if $(filter mockery,$(TOOLS)),$(GO) install $(MOCKERY_PKG)@$(MOCKERY_VERSION))
 	$(if $(filter gotestsum,$(TOOLS)),$(GO) install $(GOTESTSUM_PKG)@$(GOTESTSUM_VERSION))
 	$(if $(filter benchstat,$(TOOLS)),$(GO) install $(BENCHSTAT_PKG)@$(BENCHSTAT_VERSION))
 	$(if $(filter vacuum,$(TOOLS)),$(GO) install $(VACUUM_PKG)@$(VACUUM_VERSION))
 	$(if $(filter oasdiff,$(TOOLS)),$(GO) install $(OASDIFF_PKG)@$(OASDIFF_VERSION))
+	$(if $(filter gocover-cobertura,$(TOOLS)),$(GO) install $(GOCOVER_COBERTURA_PKG)@$(GOCOVER_COBERTURA_VERSION))
 
 build: ## Build the server binary, bin/<NAME>
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/server
@@ -136,6 +148,9 @@ test: check-gotestsum ## Run all tests with the race detector (gotestsum; GOTEST
 cover: check-gotestsum ## Run tests with a coverage summary (mocks excluded)
 	$(TEST_RUNNER) -race -covermode=atomic -coverprofile=$(COVERPROFILE) $(COVER_PKGS)
 	$(GO) tool cover -func=$(COVERPROFILE) | tail -1
+
+cover-cobertura: check-gocover-cobertura cover ## make cover, then its profile as Cobertura XML in COBERTURA (coverage.xml), for GitLab
+	$(GOCOVER_COBERTURA) < $(COVERPROFILE) > $(COBERTURA)
 
 bench: check-benchstat ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT into bench.out, summarised by benchstat
 	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -count=$(BENCH_COUNT) ./... > bench.out || { cat bench.out; exit 1; }
@@ -208,4 +223,4 @@ print-%: # make print-BIN: print a variable (scripts ask make instead of repeati
 	@echo '$($*)'
 
 clean: ## Remove build artefacts
-	rm -rf bin coverage.out bench.out bench-base.out bench.test cpu.out mem.out
+	rm -rf bin coverage.out $(COBERTURA) bench.out bench-base.out bench.test cpu.out mem.out

@@ -10,6 +10,11 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+- `.gitlab-ci.yml`: the GitHub CI checks for projects hosted on GitLab, through
+  the same make targets (lint, openapi, test, mocks, vulncheck, functional,
+  and a Docker-in-Docker image build smoke-tested with the hurl suite), with
+  JUnit test results and Cobertura coverage in merge requests. New
+  `make cover-cobertura` and installed tool gocover-cobertura.
 - CI caches the installed tools (vacuum, oasdiff, gotestsum, mockery),
   keyed on the versions pinned in the Makefile: the lint job no longer
   compiles vacuum and oasdiff on every run (about 280 s).

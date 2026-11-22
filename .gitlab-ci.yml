@@ -1,0 +1,190 @@
+# GitLab CI: the checks of .github/workflows/ci.yml, for a project made from
+# this template that lives on GitLab. This repository is on GitHub and never
+# runs it. Every job runs the same make targets as the GitHub jobs: the checks
+# live in the Makefile, so the two CIs cannot drift apart.
+#
+# Validate a change: GitLab's CI Lint (Build > Pipeline editor), or locally
+# with gitlab-ci-local (https://github.com/firecow/gitlab-ci-local), e.g.
+# gitlab-ci-local --privileged (the docker job needs Docker-in-Docker).
+#
+# Runners: the docker job uses Docker-in-Docker (a privileged runner); hurl
+# is installed from its amd64 package, so jobs expect amd64 runners.
+
+workflow:
+  # Like GitHub: merge requests, devel, main and release tags; a branch with
+  # an open merge request runs once, as the merge request pipeline.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_TAG =~ /^v/
+  auto_cancel:
+    on_new_commit: interruptible
+
+stages: [lint, test, build]
+
+default:
+  # A new commit cancels the running pipeline of the old one.
+  interruptible: true
+
+variables:
+  # Keep in sync: GO_VERSION with go.mod and the Dockerfile,
+  # GOLANGCI_LINT_VERSION with the Makefile, HURL_VERSION with ci.yml.
+  # The other tools' versions are read from the Makefile (make install-tools).
+  GO_VERSION: "1.27"
+  GOLANGCI_LINT_VERSION: v2.15.0
+  HURL_VERSION: "8.0.1"
+  DOCKER_VERSION: 28.3.3
+  # GitLab caches only paths inside the project; .cache is git-ignored.
+  GOPATH: $CI_PROJECT_DIR/.cache/go
+  GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+  GOLANGCI_LINT_CACHE: $CI_PROJECT_DIR/.cache/golangci-lint
+
+# Go jobs: GO_TOOLS lists the Makefile tools a job runs. They are installed
+# with make install-tools only when the cache does not have them: the cache
+# key changes with the Makefile (GitLab keys on file contents, so any change
+# to it rebuilds them once) and the Go version.
+.go:
+  image: golang:$GO_VERSION
+  timeout: 10m
+  variables:
+    GO_TOOLS: ""
+  cache:
+    - key:
+        prefix: go-mod
+        files: [go.mod, go.sum]
+      paths: [.cache/go/pkg/mod]
+    - key: go-build-$CI_JOB_NAME_SLUG
+      paths: [.cache/go-build]
+    - key:
+        prefix: tools-$CI_JOB_NAME_SLUG-go$GO_VERSION
+        files: [Makefile]
+      paths: [.cache/go/bin]
+  before_script:
+    - export PATH="$GOPATH/bin:$PATH"
+    - |
+      missing=""
+      for tool in $GO_TOOLS; do
+        command -v "$tool" >/dev/null || missing="$missing $tool"
+      done
+      if [ -n "$missing" ]; then make install-tools TOOLS="$missing"; fi
+
+lint:
+  extends: .go
+  stage: lint
+  # The official image: golangci-lint at the pinned version, with Go and make.
+  image: golangci/golangci-lint:$GOLANGCI_LINT_VERSION
+  cache:
+    - key:
+        prefix: go-mod
+        files: [go.mod, go.sum]
+      paths: [.cache/go/pkg/mod]
+    - key: go-build-$CI_JOB_NAME_SLUG
+      paths: [.cache/go-build, .cache/golangci-lint]
+  script:
+    - make fmt-check lint lint-profiles mod-check
+
+openapi:
+  extends: .go
+  stage: lint
+  variables:
+    GO_TOOLS: vacuum oasdiff
+    # All history and tags: the breaking-change check compares the spec with
+    # the last release tag (a shallow clone has none, and the check skips).
+    GIT_DEPTH: 0
+  script:
+    - make openapi-lint openapi-breaking
+    # On a release tag: the spec must name that version.
+    - if [ -n "${CI_COMMIT_TAG:-}" ]; then bash scripts/openapi-version.sh "$CI_COMMIT_TAG"; fi
+
+test:
+  extends: .go
+  stage: test
+  variables:
+    GO_TOOLS: gotestsum gocover-cobertura
+    # gotestsum also writes a JUnit report, for the merge request's tests.
+    GOTESTSUM_JUNITFILE: report.xml
+    GOTESTSUM_FORMAT: testname
+  script:
+    - go vet ./...
+    # make cover (race, mocks excluded), then the profile as Cobertura XML.
+    - make cover-cobertura COVERPROFILE=coverage.txt COBERTURA=coverage.xml
+  coverage: '/total:\s+\(statements\)\s+\d+(?:\.\d+)?%/'
+  artifacts:
+    when: always
+    expire_in: 1 week
+    reports:
+      junit: report.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
+mocks:
+  extends: .go
+  stage: test
+  variables:
+    GO_TOOLS: mockery
+  script:
+    - make mocks
+    - git status --porcelain
+    - |
+      test -z "$(git status --porcelain)" || { echo "mocks are stale: run make mocks and commit" >&2; exit 1; }
+
+vulncheck:
+  extends: .go
+  stage: test
+  script:
+    - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+functional:
+  extends: .go
+  stage: test
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+  script:
+    - curl -fsSLO "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb"
+    - apt-get update -qq && apt-get install -y -qq "./hurl_${HURL_VERSION}_amd64.deb"
+    - make test-functional
+
+# Builds the image with Docker-in-Docker (Kaniko's upstream project was
+# archived in 2025) and smoke-tests it: -version names this commit, and the
+# hurl suite passes against the container. Publishing stays in GitHub's
+# release.yml.
+docker:
+  stage: build
+  needs: [lint, openapi, test, functional]
+  image: docker:$DOCKER_VERSION-cli
+  services:
+    - docker:$DOCKER_VERSION-dind
+  timeout: 15m
+  variables:
+    DOCKER_TLS_CERTDIR: /certs
+  before_script:
+    # make print-NAME: the project name comes from the Makefile.
+    - apk add --no-cache make
+    - docker info
+  script:
+    - |
+      docker build \
+        --build-arg NAME="$(make --no-print-directory print-NAME)" \
+        --build-arg SOURCE="$CI_PROJECT_URL" \
+        --build-arg VERSION="$CI_COMMIT_REF_NAME" \
+        --build-arg REVISION="$CI_COMMIT_SHA" \
+        --build-arg CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        -t ci-image .
+    - docker run --rm ci-image -version | tee version.txt
+    - grep -q " (revision $CI_COMMIT_SHA)$" version.txt
+    - docker run -d --name smoke -p 8080:8080 ci-image
+    # The service's ports are on the dind host, "docker".
+    - |
+      for i in $(seq 1 20); do
+        wget -qO- http://docker:8080/healthz && break
+        sleep 0.5
+      done
+    # The hurl suite, as scripts/hurl.sh runs it, from the hurl image (a bind
+    # mount would name a path on the dind host, so the tests are copied in).
+    - printf 'FROM ghcr.io/orange-opensource/hurl:%s\nCOPY . /tests\n' "$HURL_VERSION" | docker build -t hurl-tests -f - test/hurl
+    - docker run --rm --network container:smoke hurl-tests --test --variable base_url=http://localhost:8080 --glob '/tests/*.hurl'
+  after_script:
+    - docker logs smoke || true

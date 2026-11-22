@@ -170,12 +170,13 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
   generate          go generate ./... + regenerate mocks
   go-generate       go generate ./...
   check-tools       Check every tool: missing → error with how to install it; other version → warning
-  install-tools     go install the pinned mockery, gotestsum, benchstat, vacuum and oasdiff (TOOLS=gotestsum picks; needs network)
+  install-tools     go install the pinned mockery, gotestsum, benchstat, vacuum, oasdiff and gocover-cobertura (TOOLS=gotestsum picks; needs network)
   build             Build the server binary, bin/<NAME>
   build-debug       Build bin/<NAME>-debug with debug symbols, no optimizations (for dlv)
   run               Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
   test              Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
   cover             Run tests with a coverage summary (mocks excluded)
+  cover-cobertura   make cover, then its profile as Cobertura XML in COBERTURA (coverage.xml), for GitLab
   bench             Benchmarks (time, B/op, allocs/op) x BENCH_COUNT into bench.out, summarised by benchstat
   bench-compare     Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
   bench-profile     CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
@@ -205,13 +206,15 @@ check, the hurl suite (`make test-functional`) and a smoke test of the Docker
 image, which `make ci` leaves out.
 
 Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/docs/welcome/install/)
-v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker, and five
+v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker, and six
 Go tools: [mockery](https://vektra.github.io/mockery/),
 [gotestsum](https://github.com/gotestyourself/gotestsum),
 [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat),
-[vacuum](https://quobix.com/vacuum/) (the OpenAPI linter) and
-[oasdiff](https://www.oasdiff.com/) (the OpenAPI breaking-change check).
-`make install-tools` installs those five at the versions CI uses
+[vacuum](https://quobix.com/vacuum/) (the OpenAPI linter),
+[oasdiff](https://www.oasdiff.com/) (the OpenAPI breaking-change check) and
+[gocover-cobertura](https://github.com/boumenot/gocover-cobertura) (the
+coverage report for GitLab, `make cover-cobertura`).
+`make install-tools` installs those six at the versions CI uses
 (`go install`, into `$(go env GOPATH)/bin`); golangci-lint has its own
 install page. Tools are installed binaries, not `go tool`s pinned in
 `go.mod`: they keep working offline and after `go clean -cache -modcache`,
@@ -223,6 +226,26 @@ Dependabot does not see them. CI caches the built tools, keyed on those
 versions (`.github/actions/install-tools`), so a tool compiles once per
 version instead of on every run. Tests run through gotestsum:
 `make test GOTESTSUM_FORMAT=testname` lists every test.
+
+### GitLab CI
+
+`.gitlab-ci.yml` runs the same checks on GitLab, for a project made from this
+template that lives there; this repository is on GitHub and never runs it.
+Its jobs call the same make targets as the GitHub jobs (lint, openapi, test,
+mocks, vulncheck, functional, docker), so a check added to the Makefile
+reaches both. On top of GitHub's jobs, the merge request shows the test
+results (gotestsum's JUnit report) and coverage (`make cover-cobertura`).
+The Go module and build caches and the installed tools are cached; tools are
+keyed on the Makefile's content, since GitLab can only key on files. The
+docker job builds with Docker-in-Docker, so it needs a privileged runner, and
+runs the hurl suite against the image; publishing images stays in GitHub's
+`release.yml`. Versions that live outside the Makefile (Go, golangci-lint,
+hurl, Docker) are variables at the top of the file: keep them in sync with
+`ci.yml`. To check a change, paste the file in GitLab's CI Lint (Build >
+Pipeline editor), or run the jobs locally with
+[gitlab-ci-local](https://github.com/firecow/gitlab-ci-local):
+`gitlab-ci-local --privileged` (its working directory, `.gitlab-ci-local/`,
+is git-ignored).
 
 ### Adapting the template
 
