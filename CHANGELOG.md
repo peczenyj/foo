@@ -10,6 +10,8 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
 - Secrets from files: every secret can also be read from the file that
   `<NAME>_FILE` names (the Docker and Kubernetes secrets convention), once at
   startup and up to 64 KiB, keeping the value out of the process
