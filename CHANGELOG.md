@@ -10,6 +10,8 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-22
+
 - `-version` no longer hides invalid settings: an invalid flag or environment
   variable is reported, with exit status 2, as without it. It still doesn't
   require the required secrets, so `<image> -version` works without them.
@@ -23,7 +25,6 @@ Released sections are never edited.
   address-in-use test checks the error on every OS, not Linux's message.
 - Docs: a plain `docker build` leaves the `created` label empty (README,
   Dockerfile); `make docker` sets it.
-
 - Lite kit: `make export-lite DEST=<dir> MODULE=<path> NAME=<name> [FORCE=1]`
   copies a smaller, renamed copy of the template (no mocks, hurl,
   benchmarks, OpenAPI, Codecov or release automation; golangci-lint as the
