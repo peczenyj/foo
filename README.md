@@ -97,9 +97,26 @@ errs = append(errs, readSecret(getenv, EnvAPIKey, true, &c.APIKey)) // in readEn
 
 Then pass `cfg.APIKey.Reveal()` to whatever sends it.
 
-Not supported yet: the `_FILE` convention of Docker and Kubernetes secrets
-(`FOO_API_KEY_FILE=/run/secrets/api_key`), which also keeps the value out of
-the process environment (`/proc/<pid>/environ`).
+Every secret can also come from a file, with the `_FILE` convention of
+Docker and Kubernetes secrets: `FOO_API_KEY_FILE=/run/secrets/api_key`
+instead of `FOO_API_KEY=<value>`. The value then stays out of the process
+environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
+
+- The file is read once, at startup, up to 64 KiB, with the same trailing
+  newline rule. Relative paths resolve against the working directory, and
+  symlinks (Kubernetes mounts) are followed.
+- These are usage errors (exit 2), even for an optional secret, since setting
+  `_FILE` shows intent: both `FOO_API_KEY` and `FOO_API_KEY_FILE` set, a file
+  that is missing or can't be read, a file larger than 64 KiB. A blank file
+  counts as missing for a required secret. Errors name the variable and the
+  path, never the content.
+- The file is read to its end, so a named pipe or `/dev/stdin` holds
+  startup until the writer closes it. That is also how to pipe a secret in
+  without putting it in the environment:
+  `printf %s "$KEY" | FOO_API_KEY_FILE=/dev/stdin ./bin/foo`.
+- File permissions are left to the orchestrator: Kubernetes mounts secrets
+  `0644` unless `defaultMode` says otherwise, and Docker often `0444`, so a
+  permission warning would fire on most correct deployments.
 
 ## Development
 
