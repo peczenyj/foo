@@ -9,10 +9,10 @@ import "testing"
 // testcontainers-go or dockertest. They only build with the integration tag
 // and run with make test-integration; name them TestIntegration_*.
 //
-// foo has no external dependency yet: this example only shows the
+// The service has no external dependency yet: this example only shows the
 // convention, and skips.
 func TestIntegration_example(t *testing.T) {
 	t.Parallel()
 
-	t.Skip("example only: foo has no external dependency to integrate with yet")
+	t.Skip("example only: the service has no external dependency to integrate with yet")
 }

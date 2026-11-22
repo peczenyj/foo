@@ -72,4 +72,4 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/peczenyj/foo)
+        - localmodule
