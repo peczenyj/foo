@@ -110,6 +110,10 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
   that is missing or can't be read, a file larger than 64 KiB. A blank file
   counts as missing for a required secret. Errors name the variable and the
   path, never the content.
+- The file is read to its end, so a named pipe or `/dev/stdin` holds
+  startup until the writer closes it. That is also how to pipe a secret in
+  without putting it in the environment:
+  `printf %s "$KEY" | FOO_API_KEY_FILE=/dev/stdin ./bin/foo`.
 - File permissions are left to the orchestrator: Kubernetes mounts secrets
   `0644` unless `defaultMode` says otherwise, and Docker often `0444`, so a
   permission warning would fire on most correct deployments.

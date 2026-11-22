@@ -21,12 +21,14 @@ const (
 	// fileSuffix names the variable that holds a path to the secret instead
 	// of the secret itself: FOO_API_KEY_FILE=/run/secrets/api_key.
 	fileSuffix = "_FILE"
-	// maxSecretFileSize caps a secret file: a misconfigured path to a log or
-	// a binary fails clearly instead of loading megabytes into memory.
-	maxSecretFileSize = 64 << 10
+	// maxSecretFileKiB caps a secret file: a misconfigured path to a log or
+	// a binary fails clearly instead of loading megabytes into memory. The
+	// error message is built from it, so the two never disagree.
+	maxSecretFileKiB  = 64
+	maxSecretFileSize = maxSecretFileKiB << 10
 )
 
-var errSecretFileTooLarge = errors.New("larger than 64 KiB")
+var errSecretFileTooLarge = errors.New("too large")
 
 // Secret holds a sensitive setting: an API key, a token, a password.
 // Printing it (any fmt verb), logging it (slog) or encoding it (JSON, text)
@@ -87,7 +89,7 @@ func (s Secret) MarshalText() ([]byte, error) { return []byte(s.String()), nil }
 // readSecret reads the environment-only setting name into dst, from the
 // variable itself or, with the _FILE convention of Docker and Kubernetes
 // secrets, from the file that name+"_FILE" points to (read once, at most
-// 64 KiB; the value then stays out of the process environment).
+// maxSecretFileKiB KiB; the value then stays out of the process environment).
 //
 // Every failure is an error wrapping ErrInvalid (a usage error, exit 2,
 // reported with every other invalid value), so a broken deployment fails at
@@ -148,7 +150,7 @@ func readSecretFile(path string) (string, error) {
 	}
 
 	if len(content) > maxSecretFileSize {
-		return "", errSecretFileTooLarge
+		return "", fmt.Errorf("%w: over %d KiB", errSecretFileTooLarge, maxSecretFileKiB)
 	}
 
 	return string(content), nil

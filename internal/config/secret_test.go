@@ -253,7 +253,7 @@ func TestReadSecret_file(t *testing.T) {
 		{
 			label:   "should reject a file larger than the limit",
 			env:     map[string]string{fileName: file("large", secretValue+strings.Repeat("k", maxSize))},
-			errText: "larger than 64 KiB",
+			errText: `": too large: over 64 KiB`,
 		},
 		{
 			label:    "should reject a blank file for a required secret",
