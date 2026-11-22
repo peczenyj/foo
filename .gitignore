@@ -30,6 +30,8 @@ docs/superpowers/
 *.bak
 *.old
 # CI and release build directories
+# gitlab-ci-local's working directory (runs .gitlab-ci.yml locally)
+.gitlab-ci-local/
 /dist
 /build
 /builds
