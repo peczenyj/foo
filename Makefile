@@ -22,6 +22,14 @@ BENCHSTAT_PKG     := $(BENCHSTAT_MOD)/cmd/benchstat
 BENCHSTAT_VERSION := v0.0.0-20261117185222-4febdb082b2c
 # install-tools installs these (TOOLS=gotestsum to pick).
 TOOLS         ?= mockery gotestsum benchstat
+# Lint profile: full (.golangci.yml, what CI runs) or lite (.golangci.lite.yml:
+# correctness only, for short, time-boxed work). A project switches with this
+# one line; make lint LINT_PROFILE=lite tries it once.
+LINT_PROFILE  ?= full
+LINT_CONFIG    = $(if $(filter lite,$(LINT_PROFILE)),.golangci.lite.yml,.golangci.yml)
+ifeq ($(filter full lite,$(LINT_PROFILE)),)
+$(error LINT_PROFILE must be full or lite, not "$(LINT_PROFILE)")
+endif
 BIN           := bin/foo
 DEBUG_BIN     := bin/foo-debug
 VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -49,14 +57,14 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^github.com/peczenyj/foo/mo
 # which make runs left to right. .NOTPARALLEL keeps that order under make -j:
 # go already builds and tests in parallel on its own.
 .NOTPARALLEL:
-.PHONY: help task ci generate go-generate check-tools check-golangci-lint check-mockery check-gotestsum check-benchstat install-tools build build-debug run test cover bench bench-compare bench-profile lint lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker clean
+.PHONY: help task ci generate go-generate check-tools check-golangci-lint check-mockery check-gotestsum check-benchstat install-tools build build-debug run test cover bench bench-compare bench-profile lint lint-profiles lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-17s %s\n",$$1,$$2}'
 
 task: generate tidy lint-fix fmt ci ## Before a commit: generate, tidy, fix, format, then run ci (edits files)
 
-ci: mod-check fmt-check lint cover ## All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
+ci: mod-check fmt-check lint lint-profiles cover ## All checks, read-only: mod-check, fmt-check, lint, lint-profiles, cover (same as GitHub CI)
 
 generate: go-generate mocks ## go generate ./... + regenerate mocks
 
@@ -112,19 +120,23 @@ bench-profile: ## CPU and memory profiles of BENCH in BENCH_PKG, for go tool ppr
 	@echo "profiles: go tool pprof -top bench.test cpu.out"
 	@echo "          go tool pprof -top -sample_index=alloc_space bench.test mem.out"
 
-lint: check-golangci-lint ## go vet + golangci-lint linters
+lint: check-golangci-lint ## go vet + golangci-lint linters (LINT_PROFILE=full|lite)
 	$(GO) vet ./...
-	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run --config $(LINT_CONFIG) ./...
+
+lint-profiles: check-golangci-lint ## Check the lite lint profile is a subset of full, and that the code passes it
+	GOLANGCI_LINT='$(GOLANGCI_LINT)' scripts/lint-profiles.sh
+	$(GOLANGCI_LINT) run --config .golangci.lite.yml ./...
 
 lint-fix: check-golangci-lint ## go fix + golangci-lint --fix (edits files)
 	$(GO) fix ./...
-	$(GOLANGCI_LINT) run --fix ./...
+	$(GOLANGCI_LINT) run --config $(LINT_CONFIG) --fix ./...
 
 fmt: check-golangci-lint ## Format the code (gofumpt + gci)
-	$(GOLANGCI_LINT) fmt ./...
+	$(GOLANGCI_LINT) fmt --config $(LINT_CONFIG) ./...
 
 fmt-check: check-golangci-lint ## Fail if any file is not formatted
-	$(GOLANGCI_LINT) fmt --diff ./...
+	$(GOLANGCI_LINT) fmt --config $(LINT_CONFIG) --diff ./...
 
 mod-check: ## Fail if go.mod/go.sum need tidying (read-only), then verify
 	$(GO) mod tidy -diff

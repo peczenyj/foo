@@ -58,7 +58,7 @@ invalid value is reported at startup, and the server exits with status 2.
 ```text
   help              Show available targets
   task              Before a commit: generate, tidy, fix, format, then run ci (edits files)
-  ci                All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
+  ci                All checks, read-only: mod-check, fmt-check, lint, lint-profiles, cover (same as GitHub CI)
   generate          go generate ./... + regenerate mocks
   go-generate       go generate ./...
   check-tools       Check every tool: missing → error with how to install it; other version → warning
@@ -71,7 +71,8 @@ invalid value is reported at startup, and the server exits with status 2.
   bench             Benchmarks (time, B/op, allocs/op) x BENCH_COUNT into bench.out, summarised by benchstat
   bench-compare     Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
   bench-profile     CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
-  lint              go vet + golangci-lint linters
+  lint              go vet + golangci-lint linters (LINT_PROFILE=full|lite)
+  lint-profiles     Check the lite lint profile is a subset of full, and that the code passes it
   lint-fix          go fix + golangci-lint --fix (edits files)
   fmt               Format the code (gofumpt + gci)
   fmt-check         Fail if any file is not formatted
@@ -107,6 +108,26 @@ different version only warns; `make check-tools` checks them all. Versions
 are pinned in the Makefile (`*_VERSION`) and bumped by hand there:
 Dependabot does not see them. Tests run through gotestsum:
 `make test GOTESTSUM_FORMAT=testname` lists every test.
+
+### Lint profiles
+
+Two golangci-lint configurations, picked with `LINT_PROFILE`:
+
+- **full** (`.golangci.yml`, the default): 64 linters, strict on style
+  (`wsl_v5`, `nlreturn`, `lll`, `mnd`, error wrapping with `err113` and
+  `wrapcheck`, parallel tests…). This repository's standard, and what CI
+  runs. Right for a long-lived service.
+- **lite** (`.golangci.lite.yml`): the standard set plus the linters that
+  find bugs (HTTP bodies, contexts, error comparison, `gosec`, `sloglint`,
+  `testifylint`…), and the same formatters. Right for short, time-boxed work.
+
+`make lint LINT_PROFILE=lite` tries lite once; a project that adopts it
+changes `LINT_PROFILE ?= full` in the Makefile, and every lint and format
+target follows. Lite is a subset of full, so code that passes full always
+passes lite: `make lint-profiles` (part of `make ci`) checks the linter sets
+and runs lite. To move a lite project to full, run
+`make lint-fix LINT_PROFILE=full` (it fixes the blank-line rules and
+formatting itself), then fix what remains by hand.
 
 ### Tests
 

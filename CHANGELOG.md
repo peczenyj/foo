@@ -49,3 +49,7 @@ date, then open a new `## [Unreleased]` below it.
   instead of `go tool`s in `go.mod`: `make install-tools` installs the pinned
   versions, each target checks the tools it runs, and `go.mod` drops their
   dependencies.
+- Two lint profiles: full (`.golangci.yml`, unchanged, what CI runs) and lite
+  (`.golangci.lite.yml`, correctness linters only), selected with
+  `LINT_PROFILE`; `make lint-profiles`, in `make ci`, checks that lite stays
+  a subset of full.
