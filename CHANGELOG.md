@@ -10,6 +10,10 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+- CI caches the installed tools (vacuum, oasdiff, gotestsum, mockery),
+  keyed on the versions pinned in the Makefile: the lint job no longer
+  compiles vacuum and oasdiff on every run (about 280 s).
+
 ## [0.4.0] - 2026-11-22
 
 - `make openapi-breaking` (oasdiff, a new installed tool), in `make ci` and

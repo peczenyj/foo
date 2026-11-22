@@ -219,7 +219,9 @@ and they stay out of the service's dependencies. Each target checks the
 tools it runs first: a missing tool stops it with the install command, a
 different version only warns; `make check-tools` checks them all. Versions
 are pinned in the Makefile (`*_VERSION`) and bumped by hand there:
-Dependabot does not see them. Tests run through gotestsum:
+Dependabot does not see them. CI caches the built tools, keyed on those
+versions (`.github/actions/install-tools`), so a tool compiles once per
+version instead of on every run. Tests run through gotestsum:
 `make test GOTESTSUM_FORMAT=testname` lists every test.
 
 ### Adapting the template
