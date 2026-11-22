@@ -30,3 +30,16 @@ date, then open a new `## [Unreleased]` below it.
   check, govulncheck, and hurl against the binary and the container.
 - Branches: `devel` (default) and protected, release-only `main`.
 - README badges, a wiki, and `AGENTS.md` for AI coding agents.
+- Fix: handler panics and accept errors from `net/http` are logged at error
+  level, so `-log-level=warn` or `error` no longer hides them.
+- Fix: a second SIGINT or SIGTERM during graceful shutdown stops the process.
+- Fix: a host with a port (`localhost:8080`) or in brackets (`[::1]`) is a
+  usage error (exit 2), and invalid flags are reported next to unexpected
+  arguments.
+- Fix: `make test-functional` works whatever `FOO_LOG_LEVEL` is, and builds
+  `bin/foo` as a prerequisite instead of running make from its recipe.
+- `.dockerignore` keeps `.env*`, `.claude` and local notes out of the build
+  context.
+- Correction to the first bullets: 404/405/500 errors carry `net/http`'s
+  plain-text body, not JSON (rather than no body), and golangci-lint runs 64
+  linters, not 61.

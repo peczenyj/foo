@@ -34,7 +34,7 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^github.com/peczenyj/foo/mo
 .PHONY: help task ci generate go-generate check-tools build build-debug run test cover bench bench-compare bench-profile lint lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker clean
 
 help: ## Show available targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-12s %s\n",$$1,$$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-17s %s\n",$$1,$$2}'
 
 task: generate tidy lint-fix fmt ci ## Before a commit: generate, tidy, fix, format, then run ci (edits files)
 
@@ -72,7 +72,7 @@ cover: ## Run tests with a coverage summary (mocks excluded)
 	$(GOTESTSUM) -race -covermode=atomic -coverprofile=$(COVERPROFILE) $(COVER_PKGS)
 	$(GO) tool cover -func=$(COVERPROFILE) | tail -1
 
-bench: ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT, summarised by benchstat into bench.out
+bench: ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT into bench.out, summarised by benchstat
 	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -count=$(BENCH_COUNT) ./... > bench.out || { cat bench.out; exit 1; }
 	$(GO) tool benchstat bench.out
 
@@ -102,7 +102,7 @@ mod-check: ## Fail if go.mod/go.sum need tidying (read-only), then verify
 	$(GO) mod tidy -diff
 	$(GO) mod verify
 
-test-functional: ## Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
+test-functional: build ## Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
 	scripts/hurl.sh
 
 test-integration: ## Integration tests (TestIntegration_*, build tag integration; may need Docker)

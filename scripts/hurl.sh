@@ -18,7 +18,9 @@ if [[ $# -gt 0 ]]; then
   exit
 fi
 
-make --no-print-directory build
+# make test-functional builds bin/foo as a prerequisite (no recursive make);
+# run on its own, the script builds it.
+[[ -n "${MAKELEVEL:-}" ]] || make --no-print-directory build
 
 log=$(mktemp)
 pid=""
@@ -33,7 +35,8 @@ cleanup() {
 trap cleanup EXIT
 
 # Port 0: the kernel picks a free port; the server logs the one it bound.
-bin/foo -host=127.0.0.1 -port=0 -log-format=json 2>"$log" &
+# -log-level=info: the "listening" line is an info log, whatever FOO_LOG_LEVEL says.
+bin/foo -host=127.0.0.1 -port=0 -log-format=json -log-level=info 2>"$log" &
 pid=$!
 
 addr=""

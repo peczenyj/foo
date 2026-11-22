@@ -8,3 +8,9 @@ README.md
 CHANGELOG.md
 bin
 vendor
+# Git-ignored local files: secrets and personal notes stay out of the build context.
+.env
+.env.*
+.claude
+docs/superpowers
+.*.md

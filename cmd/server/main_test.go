@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -108,4 +111,36 @@ func TestRun_fails_if_the_address_is_in_use(t *testing.T) {
 
 	assert.Equal(t, exitError, got)
 	assert.Contains(t, stderr.String(), "address already in use")
+}
+
+// net/http reports a handler panic through the server's ErrorLog: it must
+// reach the logs at error level, even when info logs are disabled.
+func TestNewHTTPServer_logs_handler_panics_at_error_level(t *testing.T) {
+	t.Parallel()
+
+	var logs bytes.Buffer
+
+	logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	handler := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") })
+
+	srv := httptest.NewUnstartedServer(handler)
+	srv.Config = newHTTPServer(handler, logger)
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL, nil)
+	require.NoError(t, err)
+
+	response, err := srv.Client().Do(request)
+	if err == nil {
+		_ = response.Body.Close()
+	}
+
+	require.Error(t, err, "the server drops the connection of a panicking handler")
+
+	srv.Close() // waits for the connection to close, after the panic is logged
+
+	assert.Contains(t, logs.String(), `"level":"ERROR"`)
+	assert.Contains(t, logs.String(), "panic serving")
+	assert.Contains(t, logs.String(), "boom")
 }

@@ -9,7 +9,9 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/netip"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -39,6 +41,7 @@ var ErrInvalid = errors.New("invalid configuration")
 
 // Why a value is invalid, wrapped after ErrInvalid in the errors Parse returns.
 var (
+	errHost            = errors.New("must be a host name or an IP address, without a port")
 	errPortRange       = errors.New("must be between 0 and 65535")
 	errLogFormat       = errors.New(`must be "text" or "json"`)
 	errLogLevel        = errors.New("must be debug, info, warn or error")
@@ -114,7 +117,8 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 	case cfg.ShowVersion:
 		return cfg, nil
 	case fs.NArg() > 0:
-		err = fmt.Errorf("%w: unexpected arguments %q", ErrInvalid, fs.Args())
+		// Still validate the flags: every invalid value is reported.
+		err = errors.Join(fmt.Errorf("%w: unexpected arguments %q", ErrInvalid, fs.Args()), cfg.validate())
 	default:
 		err = cfg.validate()
 	}
@@ -140,7 +144,7 @@ func readEnv(c *Config, getenv func(string) string) error {
 		}
 	}
 
-	parse(EnvHost, setIfValid(&c.Host, asString))
+	parse(EnvHost, setIfValid(&c.Host, checked(asString, checkHost)))
 	parse(EnvPort, setIfValid(&c.Port, checked(strconv.Atoi, checkPort)))
 	parse(EnvLogLevel, setIfValid(&c.LogLevel, parseLevel))
 	parse(EnvLogFormat, setIfValid(&c.LogFormat, checked(asString, checkLogFormat)))
@@ -188,6 +192,19 @@ func parseLevel(v string) (slog.Level, error) {
 	return level, nil
 }
 
+// checkHost rejects a host that Addr would bracket into an address nothing
+// can listen on, such as "localhost:8080": a host with a colon must be an
+// IPv6 address.
+func checkHost(host string) error {
+	if strings.Contains(host, ":") {
+		if _, err := netip.ParseAddr(host); err != nil {
+			return errHost
+		}
+	}
+
+	return nil
+}
+
 func checkPort(port int) error {
 	if port < 0 || port > maxPort {
 		return errPortRange
@@ -227,6 +244,10 @@ func (c Config) NewLogger(w io.Writer) *slog.Logger {
 // invalid value, not just the first one.
 func (c Config) validate() error {
 	var errs []error
+
+	if err := checkHost(c.Host); err != nil {
+		errs = append(errs, fmt.Errorf("%w: host %q: %w", ErrInvalid, c.Host, err))
+	}
 
 	if err := checkPort(c.Port); err != nil {
 		errs = append(errs, fmt.Errorf("%w: port %d: %w", ErrInvalid, c.Port, err))
