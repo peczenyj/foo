@@ -69,3 +69,9 @@ date, then open a new `## [Unreleased]` below it.
   failed with "Permission denied" there.
 
 ## [Unreleased]
+
+- Secrets: `config.Secret` prints, logs and encodes as `REDACTED` (every
+  `fmt` verb, `slog`, JSON) and returns its value only through `Reveal()`;
+  secrets are environment-only settings (`readSecret`), and a missing
+  required one is a usage error (exit 2). foo declares none; the README
+  shows the three lines to add one.

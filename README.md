@@ -53,6 +53,28 @@ invalid value is reported at startup, and the server exits with status 2.
 | `-shutdown-timeout` | `FOO_SHUTDOWN_TIMEOUT` | `10s` | grace period for in-flight requests |
 | `-version` | | | print the version and exit |
 
+### Secrets
+
+Secrets (API keys, tokens, passwords) are **environment-only** settings:
+never flags, which show up in `ps` and in shell history. They are held in a
+`config.Secret`, which prints, logs and encodes as `REDACTED` (any `fmt`
+verb, `slog` text and JSON, `json.Marshal`); only `Reveal()` returns the
+value, in the one place that sends it. A missing or blank required secret is
+a usage error at startup (exit 2, reported with every other invalid value),
+never a failure on the first request.
+
+foo needs no secret, so it declares none. Adding one takes three lines in
+`internal/config/config.go`, plus a row in the table above with "env only"
+in the flag column:
+
+```go
+EnvAPIKey = envPrefix + "API_KEY"                          // in the Env* constants
+APIKey    Secret                                           // in Config
+errs = append(errs, readSecret(getenv, EnvAPIKey, true, &c.APIKey)) // in readEnv
+```
+
+Then pass `cfg.APIKey.Reveal()` to whatever sends it.
+
 ## Development
 
 ```text
