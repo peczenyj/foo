@@ -131,6 +131,12 @@ func TestParse(t *testing.T) {
 			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, slog.LevelWarn, cfg.LogLevel) },
 		},
 		{
+			label: "should let -log-level=info replace a debug env var",
+			args:  []string{"-log-level=Info"},
+			env:   map[string]string{config.EnvLogLevel: "debug"},
+			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, slog.LevelInfo, cfg.LogLevel) },
+		},
+		{
 			label: "should accept a log level env var in any case",
 			env:   map[string]string{config.EnvLogLevel: "Error"},
 			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, slog.LevelError, cfg.LogLevel) },
