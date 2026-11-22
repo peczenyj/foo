@@ -2,12 +2,23 @@
 // implementation.
 package foo
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 var _ Fooer = (*Bar)(nil)
 
+// ErrInvalidInput is wrapped by a Fooer when its input is invalid. The API
+// answers 400 with the error's text as the problem detail, so wrap it only
+// with text that is safe to show to the client:
+//
+//	fmt.Errorf("%w: name is too long", foo.ErrInvalidInput)
+var ErrInvalidInput = errors.New("invalid input")
+
 // Fooer produces the message served by GET /foo. The error lets callers
-// handle a failing implementation; Bar never fails.
+// handle a failing implementation (ErrInvalidInput for a client mistake,
+// anything else for a failure); Bar never fails.
 type Fooer interface {
 	Foo(ctx context.Context) (string, error)
 }

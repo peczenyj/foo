@@ -24,7 +24,7 @@ This file provides guidance to AI coding agents (Claude Code, Codex, Gemini CLI,
 `cmd/server/main.go` `run()` → `internal/config.Parse` (flags, with `FOO_*` env vars as defaults, `envPrefix` + setting; flag > env > default; every invalid value reported, exit 2) → `cfg.NewLogger` (slog text/json) → `api.New(foo.New(), logger)` → `RunServer` (listens first, logs the bound address, graceful shutdown on SIGINT/SIGTERM or ctx cancel).
 
 - `internal/foo`: the `Fooer` interface (`Foo(ctx) (string, error)`) and the real implementation `*Bar`, built with `foo.New()` (pointer receiver; a real implementation's dependencies become `New`'s parameters).
-- `internal/api`: the `http.Handler`. Only `GET /foo` answers JSON (`MessageBody`). Errors carry no JSON: 404/405 come from `http.ServeMux` defaults (there is deliberately no catch-all route), a `Fooer` error becomes `http.Error` 500 and is logged, never echoed.
+- `internal/api`: the `http.Handler`. `GET /foo` answers JSON (`MessageBody`). Handler errors are RFC 9457 problem details (`application/problem+json`, `api.Problem`, `writeError` → `writeProblem`): `problemFor` (`problem.go`) is the single error → status mapping, with `errors.Is` on sentinels (`foo.ErrInvalidInput` → 400 with the error's text as `detail`; anything else → 500 with a generic `detail`, the error logged at error level, never echoed). Add a status by adding a sentinel and a case there; never call `http.Error` in a handler. 404/405 come from `http.ServeMux` defaults and stay plain text (there is deliberately no catch-all route).
 
 ## Conventions
 

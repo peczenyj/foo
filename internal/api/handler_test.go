@@ -3,6 +3,7 @@ package api_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"testing"
@@ -11,10 +12,16 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/peczenyj/foo/internal/api"
+	"github.com/peczenyj/foo/internal/foo"
 	foomock "github.com/peczenyj/foo/mocks/github.com/peczenyj/foo/foo"
 )
 
-const wantContentType = "application/json"
+const (
+	wantContentType  = "application/json"
+	problemMediaType = "application/problem+json"
+	// The router's own 404 and 405 keep net/http's plain-text body.
+	plainTextMediaType = "text/plain; charset=utf-8"
+)
 
 func TestAPI(t *testing.T) {
 	t.Parallel()
@@ -26,6 +33,7 @@ func TestAPI(t *testing.T) {
 		target  string
 		status  int
 		message string // expected MessageBody.Message, for 200 on /foo only
+		detail  string // expected problem detail; empty: not a problem response
 		allow   string // expected Allow header, for 405 only
 		logged  string // expected substring of the logs; empty: nothing logged
 	}{
@@ -53,7 +61,29 @@ func TestAPI(t *testing.T) {
 			method: http.MethodGet,
 			target: "/foo",
 			status: http.StatusInternalServerError,
+			detail: "the server could not complete the request",
 			logged: "secret db failure",
+		},
+		{
+			label: "should reply 400 with the detail of invalid input",
+			setup: func(m *foomock.Fooer) {
+				m.EXPECT().Foo(mock.Anything).Return("", fmt.Errorf("%w: name is too long", foo.ErrInvalidInput)).Once()
+			},
+			method: http.MethodGet,
+			target: "/foo",
+			status: http.StatusBadRequest,
+			detail: "invalid input: name is too long",
+		},
+		{
+			label: "should reply 400 for invalid input wrapped twice",
+			setup: func(m *foomock.Fooer) {
+				err := fmt.Errorf("checking the request: %w", fmt.Errorf("%w: empty name", foo.ErrInvalidInput))
+				m.EXPECT().Foo(mock.Anything).Return("", err).Once()
+			},
+			method: http.MethodGet,
+			target: "/foo",
+			status: http.StatusBadRequest,
+			detail: "checking the request: invalid input: empty name",
 		},
 		{
 			label:  "should return 404 for an unknown path",
@@ -118,13 +148,25 @@ func TestAPI(t *testing.T) {
 			case tc.message != "":
 				assert.Equal(t, wantContentType, headers.Get("Content-Type"))
 				assert.Equal(t, api.MessageBody{Message: tc.message}, decodeJSON[api.MessageBody](t, body))
+			case tc.detail != "":
+				// Handler errors are RFC 9457 problem details.
+				assert.Equal(t, problemMediaType, headers.Get("Content-Type"))
+				assert.Equal(t, "nosniff", headers.Get("X-Content-Type-Options"))
+				assert.Equal(t, api.Problem{
+					Type:   "about:blank",
+					Title:  http.StatusText(tc.status),
+					Status: tc.status,
+					Detail: tc.detail,
+				}, decodeJSON[api.Problem](t, body))
 			case status >= http.StatusBadRequest:
-				// JSON only on success: errors keep the default response.
-				assert.NotEqual(t, wantContentType, headers.Get("Content-Type"))
-				assert.NotContains(t, string(body), "secret")
+				// The router's 404 and 405 keep net/http's plain text.
+				assert.Equal(t, plainTextMediaType, headers.Get("Content-Type"))
 			default:
 				assert.Empty(t, body)
 			}
+
+			// An internal error never reaches the client.
+			assert.NotContains(t, string(body), "secret")
 
 			// The error the client never sees must reach the logs.
 			if tc.logged != "" {
