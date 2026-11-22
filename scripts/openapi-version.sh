@@ -20,10 +20,14 @@ want=${BASH_REMATCH[1]}
 [[ -f "$spec" ]] || { echo "error: $spec not found" >&2; exit 1; }
 
 # info.version: the version key indented under the top-level info block.
+# CRLF line endings, a trailing comment, trailing spaces and quotes are not
+# part of the value.
 have=$(awk '
+  { sub(/\r$/, "") }
   /^[^[:space:]#]/ { in_info = ($0 ~ /^info:/) }
   in_info && /^[[:space:]]+version:/ {
-    sub(/^[[:space:]]+version:[[:space:]]*/, ""); sub(/[[:space:]]+#.*$/, ""); gsub(/["\047]/, "")
+    sub(/^[[:space:]]+version:[[:space:]]*/, ""); sub(/[[:space:]]+#.*$/, ""); sub(/[[:space:]]+$/, "")
+    gsub(/["\047]/, "")
     print; exit
   }' "$spec")
 

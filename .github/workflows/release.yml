@@ -83,6 +83,19 @@ jobs:
             echo "source=$(make --no-print-directory print-SOURCE)"
           } >> "$GITHUB_OUTPUT"
 
+      # Checked here, not in the spec job: a wrong version stops the image
+      # too, even when the Release was created before the tag's CI passed.
+      # Tags cut before the spec existed (v0.3.0 and older) have none.
+      - name: The spec names this version
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          if [ -f api/openapi.yaml ]; then
+            bash scripts/openapi-version.sh "$TAG"
+          else
+            echo "::notice::$TAG has no api/openapi.yaml"
+          fi
+
   image:
     needs: resolve
     runs-on: ubuntu-latest
@@ -141,7 +154,8 @@ jobs:
           ref: refs/tags/${{ needs.resolve.outputs.tag }}
 
       # Tags cut before the spec existed (v0.3.0 and older) have nothing to
-      # attach; a manual run on a tag without a GitHub Release neither.
+      # attach; a manual run on a tag without a GitHub Release neither. The
+      # version was checked by resolve.
       - name: Attach api/openapi.yaml to the release
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
@@ -151,7 +165,6 @@ jobs:
             echo "::notice::$TAG has no api/openapi.yaml: nothing to attach"
             exit 0
           fi
-          bash scripts/openapi-version.sh "$TAG"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             echo "::notice::$TAG has no GitHub Release: nothing to attach the spec to"
             exit 0
