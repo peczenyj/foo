@@ -30,6 +30,11 @@ const (
 
 var errSecretFileTooLarge = errors.New("too large")
 
+// errSecretRequired marks a required secret that is not set. Parse ignores it
+// with -version (ignoreMissingSecrets): printing the version needs no
+// deployment secrets.
+var errSecretRequired = errors.New("is required (environment only, never a flag)")
+
 // Secret holds a sensitive setting: an API key, a token, a password.
 // Printing it (any fmt verb), logging it (slog) or encoding it (JSON, text)
 // shows REDACTED, or (unset) when it holds no value; Reveal returns the
@@ -120,7 +125,7 @@ func readSecret(getenv func(string) string, name string, required bool, dst *Sec
 	v = strings.TrimRight(v, "\r\n")
 	if strings.TrimSpace(v) == "" {
 		if required {
-			return fmt.Errorf("%w: %s or %s is required (environment only, never a flag)", ErrInvalid, name, fileName)
+			return fmt.Errorf("%w: %s or %s %w", ErrInvalid, name, fileName, errSecretRequired)
 		}
 
 		return nil

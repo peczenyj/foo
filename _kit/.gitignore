@@ -1,0 +1,18 @@
+# Build output: make build
+/bin/
+# Test binaries and profiles
+*.test
+*.out
+coverage.*
+# Dependencies: go.mod/go.sum pin them; go mod vendor creates vendor/ locally.
+/vendor/
+# Local settings and caches (.cache: the GitLab CI Go caches)
+.env
+.env.*
+.cache
+.vscode
+.idea
+go.work
+go.work.sum
+# Claude Code: personal settings
+.claude/settings.local.json

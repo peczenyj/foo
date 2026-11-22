@@ -133,7 +133,7 @@ files() {
 #    (badges, image names) when both modules are on GitHub.
 while IFS= read -r f; do
   literal "$f" "$old_module" "$new_module"
-done < <(files '*.go'; echo ./.mockery.yaml)
+done < <(files '*.go'; files .mockery.yaml)
 
 # Repository URLs first (https://github.com/owner/repo, never with a /vN or a
 # subdirectory), then the module path, then the bare owner/repo (badges,
@@ -145,12 +145,14 @@ fi
 doc_pairs+=("$old_module" "$new_module")
 if [[ -n "$old_repo" && -n "$new_repo" ]]; then
   doc_pairs+=("$old_repo" "$new_repo")
-elif [[ -n "$old_repo" ]]; then
-  warnings+=("$new_module is not on github.com: README badges and links still point to $old_repo")
 fi
 while IFS= read -r f; do
   [[ "$f" == ./CHANGELOG.md ]] && continue
   literal "$f" "${doc_pairs[@]}"
+  # Not on GitHub: badges and links in the form owner/repo stay as they are.
+  if [[ -n "$old_repo" && -z "$new_repo" ]] && grep -qF "$old_repo" "$f"; then
+    warnings+=("$new_module is not on github.com: badges and links in ${f#./} still point to $old_repo")
+  fi
 done < <(files '*.md')
 
 # 2. go.mod, unless it already names the new module.

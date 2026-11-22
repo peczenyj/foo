@@ -94,23 +94,30 @@ FOO_PORT=9090 FOO_LOG_FORMAT=json make run
 curl localhost:8080/foo                    # {"message":"bar"}
 ```
 
+`make docker` builds the image with every label set. A plain
+`docker build .` leaves `org.opencontainers.image.created` empty: the
+Dockerfile cannot compute a date (its runtime stage has no shell, and no
+`RUN` on purpose), so pass `--build-arg CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
+or use `make docker`.
+
 Released images (linux/amd64 and linux/arm64) are on the GitHub Container
 Registry:
 
 ```sh
-docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.4.0   # or :latest
+docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.5.0   # or :latest
 ```
 
 ## Configuration
 
 Flags win over environment variables, which win over the defaults. Every
-invalid value is reported at startup, and the server exits with status 2.
+invalid value is reported at startup, and the server exits with status 2,
+even with `-version` (which only skips the required secrets, below).
 
 | Flag | Environment | Default | |
 |------|-------------|---------|-|
-| `-host` | `FOO_HOST` | empty | listen host; empty for all interfaces |
+| `-host` | `FOO_HOST` | empty | listen host, without a port; empty for all interfaces; an IPv6 address with or without brackets (`::1`, `[::1]`) |
 | `-port` | `FOO_PORT` | `8080` | 0 to 65535; 0 for any free port |
-| `-log-level` | `FOO_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
+| `-log-level` | `FOO_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`, in any case (nothing else: no `info+2`) |
 | `-log-format` | `FOO_LOG_FORMAT` | `text` | `text` or `json` |
 | `-shutdown-timeout` | `FOO_SHUTDOWN_TIMEOUT` | `10s` | grace period for in-flight requests |
 | `-version` | | | print the version and exit |
@@ -126,7 +133,10 @@ value, so a config dump tells a missing secret from a configured one; only
 newline (`\n` or `\r\n`, as `echo` or a file leave) is dropped; any other
 space is kept, since it can be part of the secret. A missing or blank
 required secret is a usage error at startup (exit 2, reported with every
-other invalid value), never a failure on the first request.
+other invalid value), never a failure on the first request. `-version` is the
+exception: it doesn't require the secrets, so `docker run <image> -version`
+(as in the CI smoke tests) works without them; a secret that is set wrongly
+is still reported.
 
 foo needs no secret, so it declares none. Adding one takes three lines in
 `internal/config/config.go`, plus a row in the table above with "env only"
@@ -170,12 +180,13 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
   generate          go generate ./... + regenerate mocks
   go-generate       go generate ./...
   check-tools       Check every tool: missing → error with how to install it; other version → warning
-  install-tools     go install the pinned mockery, gotestsum, benchstat, vacuum and oasdiff (TOOLS=gotestsum picks; needs network)
+  install-tools     go install the pinned mockery, gotestsum, benchstat, vacuum, oasdiff and gocover-cobertura (TOOLS=gotestsum picks; needs network)
   build             Build the server binary, bin/<NAME>
   build-debug       Build bin/<NAME>-debug with debug symbols, no optimizations (for dlv)
   run               Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
   test              Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
   cover             Run tests with a coverage summary (mocks excluded)
+  cover-cobertura   make cover, then its profile as Cobertura XML in COBERTURA (coverage.xml), for GitLab
   bench             Benchmarks (time, B/op, allocs/op) x BENCH_COUNT into bench.out, summarised by benchstat
   bench-compare     Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
   bench-profile     CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
@@ -194,6 +205,7 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
   vendor            go mod tidy + vendor + verify (vendor/ is git-ignored)
   docker            Build the Docker image
   rename            Adapt the template: make rename MODULE=<module path> NAME=<name>
+  export-lite       Copy the lite kit, renamed, into DEST: make export-lite DEST=<dir> MODULE=<module path> NAME=<name> [FORCE=1]
   clean             Remove build artefacts
 ```
 
@@ -205,13 +217,15 @@ check, the hurl suite (`make test-functional`) and a smoke test of the Docker
 image, which `make ci` leaves out.
 
 Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/docs/welcome/install/)
-v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker, and five
+v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker, and six
 Go tools: [mockery](https://vektra.github.io/mockery/),
 [gotestsum](https://github.com/gotestyourself/gotestsum),
 [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat),
-[vacuum](https://quobix.com/vacuum/) (the OpenAPI linter) and
-[oasdiff](https://www.oasdiff.com/) (the OpenAPI breaking-change check).
-`make install-tools` installs those five at the versions CI uses
+[vacuum](https://quobix.com/vacuum/) (the OpenAPI linter),
+[oasdiff](https://www.oasdiff.com/) (the OpenAPI breaking-change check) and
+[gocover-cobertura](https://github.com/boumenot/gocover-cobertura) (the
+coverage report for GitLab, `make cover-cobertura`).
+`make install-tools` installs those six at the versions CI uses
 (`go install`, into `$(go env GOPATH)/bin`); golangci-lint has its own
 install page. Tools are installed binaries, not `go tool`s pinned in
 `go.mod`: they keep working offline and after `go clean -cache -modcache`,
@@ -219,8 +233,30 @@ and they stay out of the service's dependencies. Each target checks the
 tools it runs first: a missing tool stops it with the install command, a
 different version only warns; `make check-tools` checks them all. Versions
 are pinned in the Makefile (`*_VERSION`) and bumped by hand there:
-Dependabot does not see them. Tests run through gotestsum:
+Dependabot does not see them. CI caches the built tools, keyed on those
+versions (`.github/actions/install-tools`), so a tool compiles once per
+version instead of on every run. Tests run through gotestsum:
 `make test GOTESTSUM_FORMAT=testname` lists every test.
+
+### GitLab CI
+
+`.gitlab-ci.yml` runs the same checks on GitLab, for a project made from this
+template that lives there; this repository is on GitHub and never runs it.
+Its jobs call the same make targets as the GitHub jobs (lint, openapi, test,
+mocks, vulncheck, functional, docker), so a check added to the Makefile
+reaches both. On top of GitHub's jobs, the merge request shows the test
+results (gotestsum's JUnit report) and coverage (`make cover-cobertura`).
+The Go module and build caches and the installed tools are cached; tools are
+keyed on the Makefile's content, since GitLab can only key on files. The
+docker job builds with Docker-in-Docker, so it needs a privileged runner, and
+runs the hurl suite against the image; publishing images stays in GitHub's
+`release.yml`. Versions that live outside the Makefile (Go, golangci-lint,
+hurl, Docker) are variables at the top of the file: keep them in sync with
+`ci.yml`. To check a change, paste the file in GitLab's CI Lint (Build >
+Pipeline editor), or run the jobs locally with
+[gitlab-ci-local](https://github.com/firecow/gitlab-ci-local):
+`gitlab-ci-local --privileged` (its working directory, `.gitlab-ci-local/`,
+is git-ignored).
 
 ### Adapting the template
 
@@ -272,6 +308,42 @@ source label.
   `make install-tools && make rename MODULE=<the module in your go.mod> NAME=<name>`.
   The template's imports are rewritten to your module, `go.mod` is kept, and
   `go mod tidy` adds the template's dependencies.
+
+### Lite kit
+
+For short, time-boxed work, the lite kit is a smaller copy of the template
+that leaves out what such work doesn't need: mocks (mockery), the hurl suite,
+benchmarks, the OpenAPI spec and its checks, Codecov, release automation and
+Dependabot. It keeps:
+
+- the service: `cmd/server`, `internal/config`, `internal/foo` and
+  `internal/api` with their unit and component tests; the handler tests use
+  a hand-written fake `Fooer` instead of mocks;
+- a lite Makefile (`build`, `run`, `test`, `cover`, `lint`, `fmt`, `task`,
+  `ci`, `docker`…), whose only tool to install is golangci-lint;
+- `.golangci.lite.yml` as `.golangci.yml`, the Dockerfile, and a lean
+  `.gitignore` and `.dockerignore` of its own;
+- a GitHub workflow and a `.gitlab-ci.yml` with lint, test and docker jobs;
+- `AGENTS.md`, trimmed, and `CLAUDE.md`.
+
+Its tests keep testify: it is test-only (never in the binary) and keeps the
+kit's tests readable like the template's.
+
+```sh
+make export-lite DEST=../widget MODULE=example.com/acme/widget NAME=widget
+cd ../widget && make ci
+```
+
+`make export-lite` assembles the kit in a temporary directory, renames it
+(`scripts/rename.sh`, as `make rename` does), tidies its `go.mod` (no
+kin-openapi), then copies it into `DEST` (an existing repository, or a new
+directory) and lists the files it copied, for one "project skeleton" commit.
+If any of those files already exists in `DEST`, it copies nothing and lists
+them; `FORCE=1` overwrites them. The kit's own files live in `_kit/` (the
+leading underscore keeps them out of the template's `go ./...`); the rest
+comes from the template as it is (`scripts/export-lite.sh` lists them). CI
+exports the kit and runs its `make ci` (the `lite-kit` job), so a template
+change that breaks it fails there.
 
 ### Lint profiles
 

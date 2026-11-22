@@ -1,0 +1,91 @@
+# GitLab CI: the same checks as .github/workflows/ci.yml, through the same
+# make targets. Validate a change with GitLab's CI Lint (Build > Pipeline
+# editor). The docker job uses Docker-in-Docker (a privileged runner).
+
+workflow:
+  # Merge requests and main; a branch with an open merge request runs once,
+  # as the merge request pipeline.
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  auto_cancel:
+    on_new_commit: interruptible
+
+stages: [lint, test, build]
+
+default:
+  interruptible: true
+
+variables:
+  # Keep in sync: GO_VERSION with go.mod and the Dockerfile,
+  # GOLANGCI_LINT_VERSION with the Makefile.
+  GO_VERSION: "1.27"
+  GOLANGCI_LINT_VERSION: v2.15.0
+  DOCKER_VERSION: 28.3.3
+  # GitLab caches only paths inside the project; .cache is git-ignored.
+  GOPATH: $CI_PROJECT_DIR/.cache/go
+  GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+  GOLANGCI_LINT_CACHE: $CI_PROJECT_DIR/.cache/golangci-lint
+
+.go:
+  image: golang:$GO_VERSION
+  timeout: 10m
+  cache:
+    - key:
+        prefix: go-mod
+        files: [go.mod, go.sum]
+      paths: [.cache/go/pkg/mod]
+    - key: go-build-$CI_JOB_NAME_SLUG
+      paths: [.cache/go-build, .cache/golangci-lint]
+
+lint:
+  extends: .go
+  stage: lint
+  # The official image: golangci-lint at the pinned version, with Go and make.
+  image: golangci/golangci-lint:$GOLANGCI_LINT_VERSION
+  script:
+    - make fmt-check lint mod-check
+
+test:
+  extends: .go
+  stage: test
+  script:
+    - go vet ./...
+    - make cover
+  coverage: '/total:\s+\(statements\)\s+\d+(?:\.\d+)?%/'
+
+docker:
+  stage: build
+  image: docker:$DOCKER_VERSION-cli
+  services:
+    - docker:$DOCKER_VERSION-dind
+  timeout: 15m
+  variables:
+    DOCKER_TLS_CERTDIR: /certs
+  before_script:
+    # make print-NAME: the project name comes from the Makefile.
+    - apk add --no-cache make
+    - docker info
+  script:
+    - |
+      docker build \
+        --build-arg NAME="$(make --no-print-directory print-NAME)" \
+        --build-arg SOURCE="$CI_PROJECT_URL" \
+        --build-arg VERSION="$CI_COMMIT_REF_NAME" \
+        --build-arg REVISION="$CI_COMMIT_SHA" \
+        --build-arg CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        -t ci-image .
+    - docker run --rm ci-image -version | tee version.txt
+    - grep -q " (revision $CI_COMMIT_SHA)$" version.txt
+    - docker run -d --name smoke -p 8080:8080 ci-image
+    # The service's ports are on the dind host, "docker".
+    - |
+      for i in $(seq 1 20); do
+        wget -qO- http://docker:8080/healthz && break
+        sleep 0.5
+      done
+      wget -qO- http://docker:8080/healthz
+  after_script:
+    - docker logs smoke || true

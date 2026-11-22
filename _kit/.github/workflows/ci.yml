@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0 # keep in sync with GOLANGCI_LINT_VERSION in the Makefile
+
+      - name: Formatting (gofumpt + gci)
+        run: make fmt-check
+
+      - name: go.mod and go.sum are tidy and verified
+        run: make mod-check
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test (race + coverage)
+        run: make cover
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build image
+        run: |
+          docker build \
+            --build-arg NAME="$(make --no-print-directory print-NAME)" \
+            --build-arg SOURCE="$(make --no-print-directory print-SOURCE)" \
+            --build-arg VERSION=${{ github.ref_name }} \
+            --build-arg REVISION=${{ github.sha }} \
+            --build-arg CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            -t ci-image .
+
+      - name: Smoke test
+        run: |
+          docker run --rm ci-image -version | tee version.txt
+          grep -q " (revision ${{ github.sha }})$" version.txt
+          docker run -d --name smoke -p 8080:8080 ci-image
+          for i in $(seq 1 20); do
+            curl -fsS localhost:8080/healthz && break
+            sleep 0.5
+          done
+          curl -fsS localhost:8080/healthz
+
+      - name: Container logs
+        if: always()
+        run: docker logs smoke || true

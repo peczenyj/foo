@@ -1,0 +1,55 @@
+name: Install tools
+description: >-
+  Installs Go tools at the versions pinned in the Makefile (make install-tools),
+  caching the built binaries: a tool is compiled only when its version (or Go)
+  changes, instead of on every run.
+
+inputs:
+  tools:
+    description: Space-separated tools from the Makefile's TOOLS, e.g. "vacuum oasdiff"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The cache key names each tool with its pinned version (make
+    # print-<TOOL>_VERSION) and the Go version that builds it, so bumping
+    # either rebuilds exactly what changed.
+    - name: Tool versions
+      id: tools
+      shell: bash
+      env:
+        TOOLS: ${{ inputs.tools }}
+      run: |
+        gobin=$(go env GOBIN)
+        gobin=${gobin:-$(go env GOPATH)/bin}
+        key="tools-${RUNNER_OS}-${RUNNER_ARCH}-$(go env GOVERSION)"
+        paths=""
+        for tool in $TOOLS; do
+          var=$(tr 'a-z-' 'A-Z_' <<<"$tool")_VERSION
+          version=$(make --no-print-directory "print-$var")
+          [ -n "$version" ] || { echo "::error::no $var in the Makefile"; exit 1; }
+          key="$key-$tool@$version"
+          paths="$paths$gobin/$tool"$'\n'
+        done
+        {
+          echo "key=$key"
+          echo "paths<<EOF"
+          printf '%s' "$paths"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+        echo "cache key: $key"
+
+    - name: Restore the tools
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.tools.outputs.paths }}
+        key: ${{ steps.tools.outputs.key }}
+
+    - name: Build the tools (cache miss)
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        TOOLS: ${{ inputs.tools }}
+      run: make install-tools TOOLS="$TOOLS"

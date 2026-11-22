@@ -10,6 +10,38 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-22
+
+- `-version` no longer hides invalid settings: an invalid flag or environment
+  variable is reported, with exit status 2, as without it. It still doesn't
+  require the required secrets, so `<image> -version` works without them.
+- `-host` and `FOO_HOST` accept a bracketed IPv6 address (`[::1]`) and strip
+  the brackets; brackets around anything else are a usage error (exit 2)
+  instead of a listen failure (exit 1).
+- `-log-level` and `FOO_LOG_LEVEL` accept only `debug`, `info`, `warn` and
+  `error` (in any case): slog's other forms (`info+2`, numbers) are rejected,
+  as the help text always said. The help shows the default as `info`.
+- Tests: `HEAD /foo` (component test, also in the lite kit, and hurl); the
+  address-in-use test checks the error on every OS, not Linux's message.
+- Docs: a plain `docker build` leaves the `created` label empty (README,
+  Dockerfile); `make docker` sets it.
+- Lite kit: `make export-lite DEST=<dir> MODULE=<path> NAME=<name> [FORCE=1]`
+  copies a smaller, renamed copy of the template (no mocks, hurl,
+  benchmarks, OpenAPI, Codecov or release automation; golangci-lint as the
+  only tool; testify kept, a hand-written fake instead of mocks) into
+  another repository. It never overwrites a file without `FORCE=1`. A
+  `lite-kit` CI job runs the export's `make ci`.
+- `make rename` no longer needs `.mockery.yaml`, and warns about GitHub badges
+  only in the Markdown files that still have them.
+- `.gitlab-ci.yml`: the GitHub CI checks for projects hosted on GitLab, through
+  the same make targets (lint, openapi, test, mocks, vulncheck, functional,
+  and a Docker-in-Docker image build smoke-tested with the hurl suite), with
+  JUnit test results and Cobertura coverage in merge requests. New
+  `make cover-cobertura` and installed tool gocover-cobertura.
+- CI caches the installed tools (vacuum, oasdiff, gotestsum, mockery),
+  keyed on the versions pinned in the Makefile: the lint job no longer
+  compiles vacuum and oasdiff on every run (about 280 s).
+
 ## [0.4.0] - 2026-11-22
 
 - `make openapi-breaking` (oasdiff, a new installed tool), in `make ci` and
