@@ -10,6 +10,10 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+- `make openapi-breaking` (oasdiff, a new installed tool), in `make ci` and
+  CI, fails on OpenAPI changes that break clients of the last final release;
+  a deliberate break is listed in `api/oasdiff-ignore.txt` in the same pull
+  request.
 - The OpenAPI spec is attached to each GitHub Release
   (`releases/download/vX.Y.Z/openapi.yaml`, a stable URL for client
   generation), and CI checks on tag pushes that its `info.version` matches

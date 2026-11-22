@@ -22,6 +22,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # All history and tags: the breaking-change check compares the spec
+          # with the last release tag (a shallow clone has none, and the check
+          # would skip).
+          fetch-depth: 0
 
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
@@ -38,12 +43,15 @@ jobs:
       - name: The lite lint profile is a subset of full, and passes
         run: make lint-profiles
 
-      # vacuum, at the version pinned in the Makefile (VACUUM_VERSION).
-      - name: Install vacuum
-        run: make install-tools TOOLS=vacuum
+      # vacuum and oasdiff, at the versions pinned in the Makefile.
+      - name: Install vacuum and oasdiff
+        run: make install-tools TOOLS="vacuum oasdiff"
 
       - name: OpenAPI spec (vacuum)
         run: make openapi-lint
+
+      - name: No OpenAPI change breaks clients of the last release (oasdiff)
+        run: make openapi-breaking
 
       # On a release tag: the spec must name that version (bumped in the
       # release pull request), before the GitHub Release attaches it.
