@@ -44,7 +44,8 @@ func (s Secret) IsSet() bool { return s.value != nil }
 // String implements fmt.Stringer.
 func (Secret) String() string { return redacted }
 
-// GoString implements fmt.GoStringer (%#v).
+// GoString implements fmt.GoStringer, for callers that use it directly (fmt
+// itself calls Format, even for %#v).
 func (Secret) GoString() string { return redacted }
 
 // Format implements fmt.Formatter, so every verb (%x, %q, %d…) prints

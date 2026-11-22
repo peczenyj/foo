@@ -47,6 +47,8 @@ func TestSecret_never_prints_its_value(t *testing.T) {
 	assert.Equal(t, redacted, fmt.Sprint(secret))
 	assert.Equal(t, redacted, fmt.Sprintf("%#v", secret))
 	assert.Equal(t, redacted, secret.String())
+	// fmt calls Format, even for %#v; GoString still serves direct callers.
+	assert.Equal(t, redacted, secret.GoString())
 	assert.Contains(t, fmt.Sprintf("%+v", holder), "APIKey:"+redacted)
 }
 
