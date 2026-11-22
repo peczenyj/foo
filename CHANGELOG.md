@@ -18,7 +18,7 @@ Released sections are never edited.
 - `-log-level` and `FOO_LOG_LEVEL` accept only `debug`, `info`, `warn` and
   `error` (in any case): slog's other forms (`info+2`, numbers) are rejected,
   as the help text always said. The help shows the default as `info`.
-- Tests: `HEAD /foo` (component test and hurl); the address-in-use test
+- Tests: `HEAD /foo` (component test, also in the lite kit, and hurl); the address-in-use test
   checks the error on every OS, not Linux's message.
 - Docs: a plain `docker build` leaves the `created` label empty (README,
   Dockerfile); `make docker` sets it.
