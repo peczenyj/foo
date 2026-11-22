@@ -129,9 +129,10 @@ formatters:
     - gofumpt
     - gci
   settings:
-    # gci groups the imports: standard library, third party, then this module.
+    # gci groups the imports: standard library, third party, then this module
+    # (localmodule: the module path read from go.mod).
     gci:
       sections:
         - standard
         - default
-        - prefix(github.com/peczenyj/foo)
+        - localmodule

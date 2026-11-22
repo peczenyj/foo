@@ -1,5 +1,6 @@
 // Package config reads the server settings from command-line flags, with
-// FOO_* environment variables as defaults: flag > env var > built-in default.
+// environment variables (envPrefix + setting) as defaults: flag > env var >
+// built-in default.
 package config
 
 import (
@@ -15,13 +16,17 @@ import (
 	"time"
 )
 
+// envPrefix starts every environment variable name: the project name, upper
+// case, with "-" replaced by "_" (make rename sets it).
+const envPrefix = "FOO_"
+
 // Environment variables read by Parse.
 const (
-	EnvHost            = "FOO_HOST"
-	EnvPort            = "FOO_PORT"
-	EnvLogLevel        = "FOO_LOG_LEVEL"
-	EnvLogFormat       = "FOO_LOG_FORMAT"
-	EnvShutdownTimeout = "FOO_SHUTDOWN_TIMEOUT"
+	EnvHost            = envPrefix + "HOST"
+	EnvPort            = envPrefix + "PORT"
+	EnvLogLevel        = envPrefix + "LOG_LEVEL"
+	EnvLogFormat       = envPrefix + "LOG_FORMAT"
+	EnvShutdownTimeout = envPrefix + "SHUTDOWN_TIMEOUT"
 )
 
 // Log formats accepted by Parse.

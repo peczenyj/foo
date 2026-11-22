@@ -25,7 +25,7 @@ func parse(t *testing.T, args []string, vars map[string]string) (config.Config, 
 
 	var output bytes.Buffer
 
-	cfg, err := config.Parse("foo", args, env(vars), &output)
+	cfg, err := config.Parse("server", args, env(vars), &output)
 
 	return cfg, output.String(), err
 }
@@ -133,22 +133,22 @@ func TestParse_errors(t *testing.T) {
 		output string // expected substring
 	}{
 		{
-			label:  "should reject a non-numeric FOO_PORT",
+			label:  "should reject a non-numeric port env var",
 			env:    map[string]string{config.EnvPort: "abc"},
 			output: config.EnvPort,
 		},
 		{
-			label:  "should reject a FOO_PORT above 65535",
+			label:  "should reject a port env var above 65535",
 			env:    map[string]string{config.EnvPort: "70000"},
 			output: config.EnvPort,
 		},
 		{
-			label:  "should reject a negative FOO_PORT",
+			label:  "should reject a negative port env var",
 			env:    map[string]string{config.EnvPort: "-1"},
 			output: config.EnvPort,
 		},
 		{
-			label:  "should report an invalid FOO_PORT even when -port replaces it",
+			label:  "should report an invalid port env var even when -port replaces it",
 			args:   []string{"-port=7070"},
 			env:    map[string]string{config.EnvPort: "abc"},
 			output: config.EnvPort,
@@ -161,16 +161,16 @@ func TestParse_errors(t *testing.T) {
 			output: config.EnvLogLevel,
 		},
 		{label: "should reject a zero shutdown timeout", args: []string{"-shutdown-timeout=0s"}, output: "shutdown timeout"},
-		{label: "should reject extra arguments", args: []string{"foo"}, output: "unexpected arguments"},
+		{label: "should reject extra arguments", args: []string{"extra"}, output: "unexpected arguments"},
 		{
 			label:  "should still validate the flags next to extra arguments",
-			args:   []string{"-port=70000", "foo"},
+			args:   []string{"-port=70000", "extra"},
 			output: "port 70000",
 		},
 		{label: "should reject a host with a port", args: []string{"-host=localhost:80"}, output: `host "localhost:80"`},
 		{label: "should reject a bracketed IPv6 host", args: []string{"-host=[::1]"}, output: `host "[::1]"`},
 		{
-			label:  "should reject a FOO_HOST with a port",
+			label:  "should reject a host env var with a port",
 			env:    map[string]string{config.EnvHost: "localhost:80"},
 			output: config.EnvHost,
 		},

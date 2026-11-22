@@ -74,7 +74,7 @@ jobs:
         if: matrix.go-version == '1.27.x'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: peczenyj/foo
+          slug: ${{ github.repository }}
 
   mocks:
     runs-on: ubuntu-latest
@@ -141,10 +141,12 @@ jobs:
       - name: Build image
         run: |
           docker build \
+            --build-arg NAME="$(make --no-print-directory print-NAME)" \
+            --build-arg SOURCE="$(make --no-print-directory print-SOURCE)" \
             --build-arg VERSION=${{ github.ref_name }} \
             --build-arg REVISION=${{ github.sha }} \
             --build-arg CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-            -t foo:ci .
+            -t ci-image .
 
       - name: Install hurl
         run: |
@@ -153,9 +155,9 @@ jobs:
 
       - name: Smoke test
         run: |
-          docker run --rm foo:ci -version | tee version.txt
-          grep -q '^foo ' version.txt
-          docker run -d --name foo -p 8080:8080 foo:ci
+          docker run --rm ci-image -version | tee version.txt
+          grep -q " (revision ${{ github.sha }})$" version.txt
+          docker run -d --name smoke -p 8080:8080 ci-image
           for i in $(seq 1 20); do
             curl -fsS localhost:8080/healthz && break
             sleep 0.5
@@ -164,4 +166,4 @@ jobs:
 
       - name: Container logs
         if: always()
-        run: docker logs foo || true
+        run: docker logs smoke || true

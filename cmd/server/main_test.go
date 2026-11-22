@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/peczenyj/foo/internal/config"
 )
 
 func env(vars map[string]string) func(string) string {
@@ -32,13 +34,13 @@ func TestRun(t *testing.T) {
 			label:    "should print the version and exit",
 			args:     []string{"-version"},
 			exitCode: exitOK,
-			stdout:   "foo dev (revision unknown)\n",
+			stdout:   programName + " dev (revision unknown)\n",
 		},
 		{
 			label:    "should print the usage on -h",
 			args:     []string{"-h"},
 			exitCode: exitOK,
-			stderr:   "Usage of foo",
+			stderr:   "Usage of " + programName,
 		},
 		{
 			label:    "should reject an unknown flag",
@@ -53,10 +55,10 @@ func TestRun(t *testing.T) {
 			stderr:   "invalid configuration",
 		},
 		{
-			label:    "should reject an invalid FOO_PORT",
-			env:      map[string]string{"FOO_PORT": "abc"},
+			label:    "should reject an invalid port env var",
+			env:      map[string]string{config.EnvPort: "abc"},
 			exitCode: exitUsage,
-			stderr:   "FOO_PORT",
+			stderr:   config.EnvPort,
 		},
 	}
 
