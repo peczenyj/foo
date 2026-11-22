@@ -111,7 +111,7 @@ docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.4.0   # or :latest
 
 Flags win over environment variables, which win over the defaults. Every
 invalid value is reported at startup, and the server exits with status 2,
-even with `-version`.
+even with `-version` (which only skips the required secrets, below).
 
 | Flag | Environment | Default | |
 |------|-------------|---------|-|
@@ -133,7 +133,10 @@ value, so a config dump tells a missing secret from a configured one; only
 newline (`\n` or `\r\n`, as `echo` or a file leave) is dropped; any other
 space is kept, since it can be part of the secret. A missing or blank
 required secret is a usage error at startup (exit 2, reported with every
-other invalid value), never a failure on the first request.
+other invalid value), never a failure on the first request. `-version` is the
+exception: it doesn't require the secrets, so `docker run <image> -version`
+(as in the CI smoke tests) works without them; a secret that is set wrongly
+is still reported.
 
 foo needs no secret, so it declares none. Adding one takes three lines in
 `internal/config/config.go`, plus a row in the table above with "env only"

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -84,11 +85,14 @@ func (c Config) Addr() string {
 // and an error wrapping ErrInvalid for an invalid value, with -version too.
 //
 // Every invalid environment variable is reported, even when a flag replaces
-// it or -version is set, so a broken deployment setting never hides.
+// it or -version is set, so a broken deployment setting never hides. The one
+// exception: -version does not require the required secrets, so that
+// "<image> -version" works without the deployment's secrets.
 func Parse(name string, args []string, getenv func(string) string, output io.Writer) (Config, error) {
 	cfg := Default()
 
-	envErr := readEnv(&cfg, getenv)
+	envErrs := readEnv(&cfg, getenv)
+	envErr := errors.Join(envErrs...)
 
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(output)
@@ -124,6 +128,10 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 		err = cfg.validate()
 	}
 
+	if cfg.ShowVersion {
+		envErr = errors.Join(ignoreMissingSecrets(envErrs)...)
+	}
+
 	// An env var host was stripped by readEnv; a -host flag is stripped here.
 	if host, hostErr := parseHost(cfg.Host); hostErr == nil {
 		cfg.Host = host
@@ -137,9 +145,10 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 }
 
 // readEnv overrides the defaults in c with the environment variables that are
-// set. It checks each value as validate does, and reports every invalid one;
-// an invalid value leaves the built-in default in place.
-func readEnv(c *Config, getenv func(string) string) error {
+// set. It checks each value as validate does, and returns an error for every
+// invalid one (nil entries are fine); an invalid value leaves the built-in
+// default in place.
+func readEnv(c *Config, getenv func(string) string) []error {
 	var errs []error
 
 	parse := func(name string, set func(string) error) {
@@ -156,7 +165,14 @@ func readEnv(c *Config, getenv func(string) string) error {
 	parse(EnvLogFormat, setIfValid(&c.LogFormat, checked(asString, checkLogFormat)))
 	parse(EnvShutdownTimeout, setIfValid(&c.ShutdownTimeout, checked(time.ParseDuration, checkShutdownTimeout)))
 
-	return errors.Join(errs...)
+	return errs
+}
+
+// ignoreMissingSecrets returns errs without the errors of required secrets
+// that are not set (errSecretRequired), for -version. A secret that is set
+// but invalid (both variables, an unreadable or too-large file) stays.
+func ignoreMissingSecrets(errs []error) []error {
+	return slices.DeleteFunc(slices.Clone(errs), func(err error) bool { return errors.Is(err, errSecretRequired) })
 }
 
 // setIfValid returns a setter that stores the parsed value in dst only on success,
