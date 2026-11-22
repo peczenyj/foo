@@ -10,6 +10,8 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-22
+
 - `make openapi-breaking` (oasdiff, a new installed tool), in `make ci` and
   CI, fails on OpenAPI changes that break clients of the last final release;
   a deliberate break is listed in `api/oasdiff-ignore.txt` in the same pull

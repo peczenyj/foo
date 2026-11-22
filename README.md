@@ -98,7 +98,7 @@ Released images (linux/amd64 and linux/arm64) are on the GitHub Container
 Registry:
 
 ```sh
-docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.3.0   # or :latest
+docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.4.0   # or :latest
 ```
 
 ## Configuration
