@@ -16,12 +16,31 @@ Docker and CI.
 |---------|----------|
 | `GET /foo` | `200` `{"message":"bar"}`, `Content-Type: application/json` |
 | `GET /healthz` | `200`, empty body |
-| any other path | `404` |
-| another method on `/foo` or `/healthz` | `405`, with `Allow: GET, HEAD` |
-| the `Fooer` fails | `500`; the error is logged, never sent |
+| any other path | `404`, plain text |
+| another method on `/foo` or `/healthz` | `405`, plain text, with `Allow: GET, HEAD` |
+| the `Fooer` rejects its input (`*foo.InputError`) | `400` problem; `detail` is the error's `Detail` |
+| the `Fooer` fails | `500` problem; the error is logged, never sent |
 
-JSON is only for the success case: errors are the standard status, with Go's
-default plain-text body.
+Errors from `GET /foo` are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
+problem details, `Content-Type: application/problem+json`:
+
+```json
+{"type":"about:blank","title":"Internal Server Error","status":500,"detail":"the server could not complete the request"}
+```
+
+`type` is `about:blank` (the status says it all), `title` is the status
+text. A `4xx` `detail` explains what the client got wrong; a `5xx` `detail`
+is always that generic sentence, and the real error goes to the logs. One
+function, `problemFor` in `internal/api/problem.go`, maps the errors a
+handler gets from the domain to statuses (`a.writeError(w, err)`): to add a
+case, define a typed error (or a sentinel) and add it there. The client sees
+only the typed error's own field, never `err.Error()`, so context that
+wrappers add on the way up stays in the logs. A handler that validates its
+own request input (query parameters, a body) answers directly with
+`a.writeProblem(w, http.StatusBadRequest, "<what is wrong>")`. Never call
+`http.Error` in a handler. The router's own
+`404` and `405` keep `net/http`'s plain-text body: a catch-all route to turn
+them into problems would also turn every `405` into a `404`.
 
 ## Running
 

@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -8,10 +9,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/peczenyj/foo/internal/api"
 	"github.com/peczenyj/foo/internal/foo"
+	foomock "github.com/peczenyj/foo/mocks/github.com/peczenyj/foo/foo"
 )
 
 // TestAPI_component tests the API as a component: the real Fooer behind a
@@ -38,10 +41,35 @@ func TestAPI_component(t *testing.T) {
 	t.Run("GET /bar is not found", func(t *testing.T) {
 		t.Parallel()
 
-		status, _, _ := get(t, srv, "/bar")
+		status, _, headers := get(t, srv, "/bar")
 
 		assert.Equal(t, http.StatusNotFound, status)
+		assert.Equal(t, plainTextMediaType, headers.Get("Content-Type"))
 	})
+}
+
+// TestAPI_component_problem: a failing Fooer behind the real HTTP stack
+// answers a problem response, and its error never crosses the network.
+func TestAPI_component_problem(t *testing.T) {
+	t.Parallel()
+
+	fooer := foomock.NewFooer(t)
+	fooer.EXPECT().Foo(mock.Anything).Return("", errors.New("secret db failure")).Once()
+
+	srv := httptest.NewServer(api.New(fooer, slog.New(slog.DiscardHandler)))
+	t.Cleanup(srv.Close)
+
+	status, body, headers := get(t, srv, "/foo")
+
+	assert.Equal(t, http.StatusInternalServerError, status)
+	assert.Equal(t, problemMediaType, headers.Get("Content-Type"))
+	assert.Equal(t, api.Problem{
+		Type:   "about:blank",
+		Title:  "Internal Server Error",
+		Status: http.StatusInternalServerError,
+		Detail: "the server could not complete the request",
+	}, decodeJSON[api.Problem](t, body))
+	assert.NotContains(t, string(body), "secret")
 }
 
 // get sends GET path to srv over the network and returns the response.
