@@ -198,7 +198,7 @@ Each layer catches what the one before can't:
 4. **Functional tests** (`test/hurl/foo.hurl`, `make test-functional`) test
    the built binary from the outside with [hurl](https://hurl.dev/): the
    target starts it on a free port, runs the suite and stops it;
-   `scripts/hurl.sh http://host:port` tests a server that is already running.
+   `bash scripts/hurl.sh http://host:port` tests a server that is already running.
 
 All Go tests use [testify](https://github.com/stretchr/testify).
 

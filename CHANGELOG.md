@@ -64,5 +64,8 @@ date, then open a new `## [Unreleased]` below it.
   `gonew` or for an existing repository with its own `go.mod`; it handles
   `/vN` modules and modules without a dot (`widget`), and warns about any
   file that still names the old module.
+- Fix: the Makefile runs its scripts with `bash`, so a copy made with
+  `gonew` works: Go module zips keep no executable bits, and every script
+  failed with "Permission denied" there.
 
 ## [Unreleased]
