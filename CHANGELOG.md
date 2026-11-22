@@ -10,6 +10,20 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+- `-version` no longer hides invalid settings: an invalid flag or environment
+  variable is reported, with exit status 2, as without it. It still doesn't
+  require the required secrets, so `<image> -version` works without them.
+- `-host` and `FOO_HOST` accept a bracketed IPv6 address (`[::1]`) and strip
+  the brackets; brackets around anything else are a usage error (exit 2)
+  instead of a listen failure (exit 1).
+- `-log-level` and `FOO_LOG_LEVEL` accept only `debug`, `info`, `warn` and
+  `error` (in any case): slog's other forms (`info+2`, numbers) are rejected,
+  as the help text always said. The help shows the default as `info`.
+- Tests: `HEAD /foo` (component test, also in the lite kit, and hurl); the
+  address-in-use test checks the error on every OS, not Linux's message.
+- Docs: a plain `docker build` leaves the `created` label empty (README,
+  Dockerfile); `make docker` sets it.
+
 - Lite kit: `make export-lite DEST=<dir> MODULE=<path> NAME=<name> [FORCE=1]`
   copies a smaller, renamed copy of the template (no mocks, hurl,
   benchmarks, OpenAPI, Codecov or release automation; golangci-lint as the

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -56,6 +57,13 @@ func TestRun(t *testing.T) {
 		},
 		{
 			label:    "should reject an invalid port env var",
+			env:      map[string]string{config.EnvPort: "abc"},
+			exitCode: exitUsage,
+			stderr:   config.EnvPort,
+		},
+		{
+			label:    "should not print the version with an invalid env var",
+			args:     []string{"-version"},
 			env:      map[string]string{config.EnvPort: "abc"},
 			exitCode: exitUsage,
 			stderr:   config.EnvPort,
@@ -112,7 +120,28 @@ func TestRun_fails_if_the_address_is_in_use(t *testing.T) {
 	got := run(context.Background(), []string{"-host=127.0.0.1", "-port=" + port}, env(nil), &stdout, &stderr)
 
 	assert.Equal(t, exitError, got)
-	assert.Contains(t, stderr.String(), "address already in use")
+	assert.Contains(t, stderr.String(), "listen")
+
+	// The cause, checked on every OS: the error text differs (Linux "address
+	// already in use", Windows "Only one usage of each socket address…"), and
+	// so does the errno (syscall.EADDRINUSE on Unix, WSAEADDRINUSE on Windows).
+	cfg := config.Default()
+	cfg.Host, cfg.Port = "127.0.0.1", mustAtoi(t, port)
+
+	err = RunServer(t.Context(), cfg, http.NotFoundHandler(), slog.New(slog.DiscardHandler))
+
+	var opErr *net.OpError
+	require.ErrorAs(t, err, &opErr)
+	assert.Equal(t, "listen", opErr.Op)
+}
+
+func mustAtoi(t *testing.T, s string) int {
+	t.Helper()
+
+	n, err := strconv.Atoi(s)
+	require.NoError(t, err)
+
+	return n
 }
 
 // net/http reports a handler panic through the server's ErrorLog: it must

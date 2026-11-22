@@ -290,3 +290,27 @@ func TestReadSecret_file(t *testing.T) {
 		})
 	}
 }
+
+// With -version, Parse drops the errors of required secrets that are not set
+// (printing the version needs no deployment secrets: the CI smoke tests run
+// "docker run <image> -version" without them), and keeps every other one.
+func TestIgnoreMissingSecrets(t *testing.T) {
+	t.Parallel()
+
+	const name = "SVC_API_KEY"
+
+	var secret config.Secret
+
+	missing := config.ReadSecret(env(nil), name, true, &secret)
+	require.ErrorIs(t, missing, config.ErrInvalid)
+
+	bothSet := config.ReadSecret(env(map[string]string{name: "a", name + "_FILE": "/run/secrets/a"}), name, true, &secret)
+	require.ErrorIs(t, bothSet, config.ErrInvalid)
+
+	kept := config.IgnoreMissingSecrets([]error{missing, nil, bothSet})
+
+	require.Len(t, kept, 2)
+	require.NoError(t, kept[0])
+	assert.Equal(t, bothSet, kept[1])
+	assert.Empty(t, config.IgnoreMissingSecrets([]error{missing}))
+}

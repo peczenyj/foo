@@ -48,6 +48,34 @@ func TestAPI_component(t *testing.T) {
 	})
 }
 
+// TestAPI_component_HEAD: HEAD /foo is served by the GET route (http.ServeMux
+// matches GET patterns for HEAD too): the headers of a GET, no body. The spec
+// leaves HEAD undescribed, so no contract check here.
+func TestAPI_component_HEAD(t *testing.T) {
+	t.Parallel()
+
+	fooer := foomock.NewFooer(t)
+	fooer.EXPECT().Foo(mock.Anything).Return("bar", nil).Once()
+
+	srv := httptest.NewServer(api.New(fooer, slog.New(slog.DiscardHandler)))
+	t.Cleanup(srv.Close)
+
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodHead, srv.URL+"/foo", nil)
+	require.NoError(t, err)
+
+	response, err := srv.Client().Do(request)
+	require.NoError(t, err)
+
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, response.StatusCode)
+	assert.Equal(t, wantContentType, response.Header.Get("Content-Type"))
+	assert.Empty(t, body)
+}
+
 // TestAPI_component_problem: a failing Fooer behind the real HTTP stack
 // answers a problem response, and its error never crosses the network.
 func TestAPI_component_problem(t *testing.T) {

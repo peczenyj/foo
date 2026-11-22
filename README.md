@@ -94,6 +94,12 @@ FOO_PORT=9090 FOO_LOG_FORMAT=json make run
 curl localhost:8080/foo                    # {"message":"bar"}
 ```
 
+`make docker` builds the image with every label set. A plain
+`docker build .` leaves `org.opencontainers.image.created` empty: the
+Dockerfile cannot compute a date (its runtime stage has no shell, and no
+`RUN` on purpose), so pass `--build-arg CREATED=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
+or use `make docker`.
+
 Released images (linux/amd64 and linux/arm64) are on the GitHub Container
 Registry:
 
@@ -104,13 +110,14 @@ docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.4.0   # or :latest
 ## Configuration
 
 Flags win over environment variables, which win over the defaults. Every
-invalid value is reported at startup, and the server exits with status 2.
+invalid value is reported at startup, and the server exits with status 2,
+even with `-version` (which only skips the required secrets, below).
 
 | Flag | Environment | Default | |
 |------|-------------|---------|-|
-| `-host` | `FOO_HOST` | empty | listen host; empty for all interfaces |
+| `-host` | `FOO_HOST` | empty | listen host, without a port; empty for all interfaces; an IPv6 address with or without brackets (`::1`, `[::1]`) |
 | `-port` | `FOO_PORT` | `8080` | 0 to 65535; 0 for any free port |
-| `-log-level` | `FOO_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
+| `-log-level` | `FOO_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`, in any case (nothing else: no `info+2`) |
 | `-log-format` | `FOO_LOG_FORMAT` | `text` | `text` or `json` |
 | `-shutdown-timeout` | `FOO_SHUTDOWN_TIMEOUT` | `10s` | grace period for in-flight requests |
 | `-version` | | | print the version and exit |
@@ -126,7 +133,10 @@ value, so a config dump tells a missing secret from a configured one; only
 newline (`\n` or `\r\n`, as `echo` or a file leave) is dropped; any other
 space is kept, since it can be part of the secret. A missing or blank
 required secret is a usage error at startup (exit 2, reported with every
-other invalid value), never a failure on the first request.
+other invalid value), never a failure on the first request. `-version` is the
+exception: it doesn't require the secrets, so `docker run <image> -version`
+(as in the CI smoke tests) works without them; a secret that is set wrongly
+is still reported.
 
 foo needs no secret, so it declares none. Adding one takes three lines in
 `internal/config/config.go`, plus a row in the table above with "env only"
