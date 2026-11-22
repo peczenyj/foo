@@ -64,6 +64,18 @@ The spec is the contract, written by hand and kept honest by tests:
     the spec, an undocumented status included;
   - every response the spec documents is produced by a test, so the spec
     never promises what the service doesn't send.
+- **`make openapi-breaking`** ([oasdiff](https://www.oasdiff.com/)) runs in
+  `make ci` and GitHub CI: it compares the spec with the one in the last
+  final release (`vX.Y.Z`, never a prerelease) and fails on a change that
+  breaks clients generated from it (a removed operation or field, a changed
+  type, a new required parameter). Releases before the spec existed have
+  nothing to compare.
+- **Evolving the API:** additive changes (a new operation, a new optional
+  field) pass. A breaking change must be deliberate: add a new versioned path
+  (`/v2/...`) next to the old one, mark the old one `deprecated: true`, and
+  remove it in a later release, listing that removal in
+  `api/oasdiff-ignore.txt` in the same pull request (one line per change:
+  method, path and the message oasdiff printed).
 - **Not described:** the router's own `404` and `405` (plain text) and
   `HEAD`.
 - **Why 3.0.3, not 3.1:** kin-openapi and most client generators support 3.0
@@ -154,11 +166,11 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
 ```text
   help              Show available targets
   task              Before a commit: generate, tidy, fix, format, then run ci (edits files)
-  ci                All checks, read-only: mod-check, fmt-check, lint, lint-profiles, openapi-lint, cover (same as GitHub CI)
+  ci                All checks, read-only: mod-check, fmt-check, lint, lint-profiles, openapi-lint, openapi-breaking, cover (same as GitHub CI)
   generate          go generate ./... + regenerate mocks
   go-generate       go generate ./...
   check-tools       Check every tool: missing → error with how to install it; other version → warning
-  install-tools     go install the pinned mockery, gotestsum, benchstat and vacuum (TOOLS=gotestsum picks; needs network)
+  install-tools     go install the pinned mockery, gotestsum, benchstat, vacuum and oasdiff (TOOLS=gotestsum picks; needs network)
   build             Build the server binary, bin/<NAME>
   build-debug       Build bin/<NAME>-debug with debug symbols, no optimizations (for dlv)
   run               Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
@@ -170,6 +182,7 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
   lint              go vet + golangci-lint linters (LINT_PROFILE=full|lite)
   lint-profiles     Check the lite lint profile is a subset of full, and that the code passes it
   openapi-lint      Lint the OpenAPI spec, api/openapi.yaml (vacuum; warnings fail)
+  openapi-breaking  Fail on OpenAPI changes that break clients of the last vX.Y.Z release (oasdiff)
   lint-fix          go fix + golangci-lint --fix (edits files)
   fmt               Format the code (gofumpt + gci)
   fmt-check         Fail if any file is not formatted
@@ -192,12 +205,13 @@ check, the hurl suite (`make test-functional`) and a smoke test of the Docker
 image, which `make ci` leaves out.
 
 Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/docs/welcome/install/)
-v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker, and four
+v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker, and five
 Go tools: [mockery](https://vektra.github.io/mockery/),
 [gotestsum](https://github.com/gotestyourself/gotestsum),
-[benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) and
-[vacuum](https://quobix.com/vacuum/) (the OpenAPI linter).
-`make install-tools` installs those four at the versions CI uses
+[benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat),
+[vacuum](https://quobix.com/vacuum/) (the OpenAPI linter) and
+[oasdiff](https://www.oasdiff.com/) (the OpenAPI breaking-change check).
+`make install-tools` installs those five at the versions CI uses
 (`go install`, into `$(go env GOPATH)/bin`); golangci-lint has its own
 install page. Tools are installed binaries, not `go tool`s pinned in
 `go.mod`: they keep working offline and after `go clean -cache -modcache`,

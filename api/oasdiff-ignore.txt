@@ -1,0 +1,13 @@
+# Deliberate breaking changes to api/openapi.yaml, accepted by
+# scripts/openapi-breaking.sh (make openapi-breaking). Add an entry only in the
+# pull request that makes the break, so a reviewer sees it, and prefer not
+# breaking: a new versioned path (/v2/...) next to a deprecated old one.
+#
+# One line per change: the method, the path and the message oasdiff printed,
+# backticks included:
+#
+#   <METHOD> <path> <message, as oasdiff printed it>
+#
+# Never paste a real message into a comment: oasdiff matches comment lines
+# too, so an example would silently ignore that change.
+# Entries can be removed once the baseline release contains the change.
