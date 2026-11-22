@@ -36,7 +36,7 @@ Released images (linux/amd64 and linux/arm64) are on the GitHub Container
 Registry:
 
 ```sh
-docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.1.0   # or :latest
+docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.2.0   # or :latest
 ```
 
 ## Configuration
@@ -123,6 +123,7 @@ everything else derives from them:
 | `cmd/server/main.go` | `programName`: usage and `-version` output |
 | `internal/config/config.go` | `envPrefix = "FOO_"`: every environment variable name |
 | `Dockerfile` | `ARG NAME` and `ARG SOURCE` defaults, for a plain `docker build` (`make docker` passes both) |
+| `.golangci.yml`, `.golangci.lite.yml` | gofumpt's `module-path`: empty, set only for a module without a dot in its first element (`widget`), whose imports gofumpt would otherwise take for the standard library |
 | `README.md`, `AGENTS.md` | prose, badges and examples |
 
 The GitHub workflows read the repository from `${{ github.repository }}`
@@ -149,7 +150,7 @@ source label.
 
   ```sh
   go run golang.org/x/tools/cmd/gonew@latest github.com/peczenyj/foo example.com/acme/widget
-  cd widget && make rename MODULE=example.com/acme/widget NAME=widget
+  cd widget && make install-tools && make rename MODULE=example.com/acme/widget NAME=widget
   ```
 
 - **An existing repository** with its own `go.mod`: copy the template's files
