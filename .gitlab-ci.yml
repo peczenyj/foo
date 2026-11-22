@@ -136,6 +136,22 @@ mocks:
     - |
       test -z "$(git status --porcelain)" || { echo "mocks are stale: run make mocks and commit" >&2; exit 1; }
 
+# The lite kit (make export-lite) must pass on its own: exported and renamed
+# into a temporary directory, it runs its own make ci there.
+lite-kit:
+  extends: .go
+  stage: test
+  image: golangci/golangci-lint:$GOLANGCI_LINT_VERSION
+  cache:
+    - key:
+        prefix: go-mod
+        files: [go.mod, go.sum]
+      paths: [.cache/go/pkg/mod]
+  script:
+    - make export-lite DEST=/tmp/widget MODULE=example.com/acme/widget NAME=widget
+    - test "$(make --no-print-directory -C /tmp/widget print-GOLANGCI_LINT_VERSION)" = "$GOLANGCI_LINT_VERSION"
+    - make -C /tmp/widget ci
+
 vulncheck:
   extends: .go
   stage: test

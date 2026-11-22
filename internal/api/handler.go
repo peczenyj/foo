@@ -54,9 +54,8 @@ func New(f foo.Fooer, logger *slog.Logger) *API {
 // ServeHTTP implements http.Handler.
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) { a.mux.ServeHTTP(w, r) }
 
-// handle registers h for pattern and records the pattern: the contract test
-// requires the recorded routes and the operations in api/openapi.yaml to be
-// the same set. Register every route through it.
+// handle registers h for pattern and records the pattern, so tests can list
+// the registered routes. Register every route through it.
 func (a *API) handle(pattern string, h http.HandlerFunc) {
 	a.mux.HandleFunc(pattern, h)
 	a.routes = append(a.routes, pattern)

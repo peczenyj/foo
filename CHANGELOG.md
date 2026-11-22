@@ -23,6 +23,14 @@ Released sections are never edited.
 - Docs: a plain `docker build` leaves the `created` label empty (README,
   Dockerfile); `make docker` sets it.
 
+- Lite kit: `make export-lite DEST=<dir> MODULE=<path> NAME=<name> [FORCE=1]`
+  copies a smaller, renamed copy of the template (no mocks, hurl,
+  benchmarks, OpenAPI, Codecov or release automation; golangci-lint as the
+  only tool; testify kept, a hand-written fake instead of mocks) into
+  another repository. It never overwrites a file without `FORCE=1`. A
+  `lite-kit` CI job runs the export's `make ci`.
+- `make rename` no longer needs `.mockery.yaml`, and warns about GitHub badges
+  only in the Markdown files that still have them.
 - `.gitlab-ci.yml`: the GitHub CI checks for projects hosted on GitLab, through
   the same make targets (lint, openapi, test, mocks, vulncheck, functional,
   and a Docker-in-Docker image build smoke-tested with the hurl suite), with
