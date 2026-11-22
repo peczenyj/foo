@@ -28,9 +28,13 @@ new_module=$1 new_name=$2
 [[ "$new_name" =~ ^[a-z][a-z0-9-]*$ ]] || {
   echo "error: \"$new_name\" must be lower case letters, digits and \"-\", starting with a letter" >&2; exit 2; }
 
-# The template's module path, from its own import of internal/config: in an
-# existing repository, go.mod already holds the new module.
-old_module=$(awk -F'"' '$2 ~ /\/internal\/config$/ { sub(/\/internal\/config$/, "", $2); print $2; exit }' cmd/server/main.go)
+# The template's module path. Not from go.mod: an existing repository's go.mod
+# already holds the new module. First from .mockery.yaml's internal/foo key,
+# which gonew leaves alone (it rewrites go.mod and the Go imports, not YAML
+# or docs); then from the import of internal/config in cmd/server/main.go.
+old_module=$(awk '/^  [^ #][^:]*\/internal\/foo:[ \t]*$/ { sub(/^  /, ""); sub(/\/internal\/foo:.*$/, ""); print; exit }' .mockery.yaml 2>/dev/null || true)
+[[ -n "$old_module" ]] ||
+  old_module=$(awk -F'"' '$2 ~ /\/internal\/config$/ { sub(/\/internal\/config$/, "", $2); print $2; exit }' cmd/server/main.go)
 gomod_module=$(awk '/^module / { print $2; exit }' go.mod)
 old_name=$(awk '/^NAME[ \t]*[?]=/ { print $3; exit }' Makefile)
 [[ -n "$old_module" && -n "$gomod_module" && -n "$old_name" ]] || {
