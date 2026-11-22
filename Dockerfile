@@ -34,6 +34,9 @@ FROM gcr.io/distroless/static-debian12:nonroot
 
 ARG VERSION=dev
 ARG REVISION=unknown
+# The build date (RFC 3339): make docker and the CI workflows pass it. A plain
+# docker build leaves the created label empty: a Dockerfile cannot compute a
+# date without a RUN, and the runtime stage has none on purpose.
 ARG CREATED
 # The project name and repository: make docker passes NAME and SOURCE from the
 # Makefile; these defaults serve a plain docker build.

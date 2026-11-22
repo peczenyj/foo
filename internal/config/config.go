@@ -46,7 +46,7 @@ var ErrInvalid = errors.New("invalid configuration")
 
 // Why a value is invalid, wrapped after ErrInvalid in the errors Parse returns.
 var (
-	errHost            = errors.New("must be a host name or an IP address, without a port")
+	errHost            = errors.New("must be a host name or an IP address, without a port (brackets only around IPv6)")
 	errPortRange       = errors.New("must be between 0 and 65535")
 	errLogFormat       = errors.New(`must be "text" or "json"`)
 	errLogLevel        = errors.New("must be debug, info, warn or error")
@@ -55,7 +55,7 @@ var (
 
 // Config holds the server settings.
 type Config struct {
-	Host            string        // listen host; empty means all interfaces
+	Host            string        // listen host, never bracketed; empty means all interfaces
 	Port            int           // listen port; 0 means any free port
 	LogLevel        slog.Level    // minimum level logged; debug enables debug logs
 	LogFormat       string        // LogFormatText or LogFormatJSON
@@ -81,11 +81,10 @@ func (c Config) Addr() string {
 
 // Parse reads args (without the program name), using getenv for defaults.
 // Errors and usage are written to output. It returns flag.ErrHelp for -h,
-// and an error wrapping ErrInvalid for an invalid value. With -version, the
-// flag values are not validated.
+// and an error wrapping ErrInvalid for an invalid value, with -version too.
 //
 // Every invalid environment variable is reported, even when a flag replaces
-// it, so a broken deployment setting never hides behind a flag.
+// it or -version is set, so a broken deployment setting never hides.
 func Parse(name string, args []string, getenv func(string) string, output io.Writer) (Config, error) {
 	cfg := Default()
 
@@ -96,8 +95,7 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 
 	fs.StringVar(&cfg.Host, "host", cfg.Host, "listen host, empty for all interfaces (env "+EnvHost+")")
 	fs.IntVar(&cfg.Port, "port", cfg.Port, "listen port, 0 for any free port (env "+EnvPort+")")
-	fs.TextVar(&cfg.LogLevel, "log-level", cfg.LogLevel,
-		"minimum log level: debug, info, warn or error (env "+EnvLogLevel+")")
+	fs.Var(levelFlag{&cfg.LogLevel}, "log-level", "minimum log level: debug, info, warn or error (env "+EnvLogLevel+")")
 	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "log format: text or json (env "+EnvLogFormat+")")
 	fs.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout,
 		"grace period for in-flight requests on shutdown (env "+EnvShutdownTimeout+")")
@@ -119,13 +117,16 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 	case parseErr != nil:
 		// flag has already reported parseErr and the usage.
 		return Config{}, errors.Join(fmt.Errorf("%w: %w", ErrInvalid, parseErr), report(envErr))
-	case cfg.ShowVersion:
-		return cfg, nil
 	case fs.NArg() > 0:
 		// Still validate the flags: every invalid value is reported.
 		err = errors.Join(fmt.Errorf("%w: unexpected arguments %q", ErrInvalid, fs.Args()), cfg.validate())
 	default:
 		err = cfg.validate()
+	}
+
+	// An env var host was stripped by readEnv; a -host flag is stripped here.
+	if host, hostErr := parseHost(cfg.Host); hostErr == nil {
+		cfg.Host = host
 	}
 
 	if err := report(errors.Join(envErr, err)); err != nil {
@@ -149,7 +150,7 @@ func readEnv(c *Config, getenv func(string) string) error {
 		}
 	}
 
-	parse(EnvHost, setIfValid(&c.Host, checked(asString, checkHost)))
+	parse(EnvHost, setIfValid(&c.Host, parseHost))
 	parse(EnvPort, setIfValid(&c.Port, checked(strconv.Atoi, checkPort)))
 	parse(EnvLogLevel, setIfValid(&c.LogLevel, parseLevel))
 	parse(EnvLogFormat, setIfValid(&c.LogFormat, checked(asString, checkLogFormat)))
@@ -186,28 +187,67 @@ func checked[T any](parse func(string) (T, error), check func(T) error) func(str
 
 func asString(v string) (string, error) { return v, nil }
 
-// parseLevel parses a log level name, such as "debug" or "warn".
+// parseLevel parses a log level name: debug, info, warn or error, in any
+// case. slog itself also accepts offsets ("info+2") and other spellings,
+// which the help text doesn't list: they are rejected.
 func parseLevel(v string) (slog.Level, error) {
-	var level slog.Level
-
-	if err := level.UnmarshalText([]byte(v)); err != nil {
-		return level, fmt.Errorf("%w: %w", errLogLevel, err)
+	switch strings.ToLower(v) {
+	case "debug":
+		return slog.LevelDebug, nil
+	case "info":
+		return slog.LevelInfo, nil
+	case "warn":
+		return slog.LevelWarn, nil
+	case "error":
+		return slog.LevelError, nil
 	}
 
-	return level, nil
+	return 0, errLogLevel
 }
 
-// checkHost rejects a host that Addr would bracket into an address nothing
-// can listen on, such as "localhost:8080": a host with a colon must be an
-// IPv6 address.
-func checkHost(host string) error {
+// levelFlag is the -log-level flag.Value: parseLevel, so the flag accepts
+// exactly what the environment variable does.
+type levelFlag struct{ level *slog.Level }
+
+func (f levelFlag) String() string {
+	if f.level == nil { // the zero value, which flag uses to detect the default
+		return ""
+	}
+
+	return strings.ToLower(f.level.String())
+}
+
+func (f levelFlag) Set(v string) error {
+	level, err := parseLevel(v)
+	if err == nil {
+		*f.level = level
+	}
+
+	return err
+}
+
+// parseHost returns host without the brackets of an IPv6 address ("[::1]",
+// the form addresses are often copied in), so that Addr brackets it once.
+// It rejects a host that Addr would turn into an address nothing can listen
+// on, such as "localhost:8080" (a host with a colon must be an IPv6 address),
+// and brackets around anything but an IPv6 address.
+func parseHost(host string) (string, error) {
+	if inner, ok := strings.CutPrefix(host, "["); ok {
+		inner, ok = strings.CutSuffix(inner, "]")
+		if addr, err := netip.ParseAddr(inner); !ok || err != nil || !addr.Is6() {
+			return "", errHost
+		}
+
+		return inner, nil
+	}
+
 	if strings.Contains(host, ":") {
 		if _, err := netip.ParseAddr(host); err != nil {
-			return errHost
+			return "", errHost
 		}
 	}
 
-	return nil
+	return host, nil
 }
 
 func checkPort(port int) error {
@@ -250,7 +290,7 @@ func (c Config) NewLogger(w io.Writer) *slog.Logger {
 func (c Config) validate() error {
 	var errs []error
 
-	if err := checkHost(c.Host); err != nil {
+	if _, err := parseHost(c.Host); err != nil {
 		errs = append(errs, fmt.Errorf("%w: host %q: %w", ErrInvalid, c.Host, err))
 	}
 

@@ -10,6 +10,13 @@ HTTP 200
 header "Content-Type" == "application/json"
 jsonpath "$.message" == "bar"
 
+# HEAD is served by the GET route: the same headers, no body.
+HEAD {{base_url}}/foo
+HTTP 200
+[Asserts]
+header "Content-Type" == "application/json"
+bytes count == 0
+
 GET {{base_url}}/bar
 HTTP 404
 [Asserts]

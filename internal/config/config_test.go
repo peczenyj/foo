@@ -109,6 +109,32 @@ func TestParse(t *testing.T) {
 			env:   map[string]string{config.EnvHost: "fe80::1%eth0"},
 			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, "[fe80::1%eth0]:8080", cfg.Addr()) },
 		},
+		{
+			label: "should strip the brackets of an IPv6 host flag",
+			args:  []string{"-host=[::1]"},
+			check: func(t *testing.T, cfg config.Config) {
+				assert.Equal(t, "::1", cfg.Host)
+				assert.Equal(t, "[::1]:8080", cfg.Addr())
+			},
+		},
+		{
+			label: "should strip the brackets of an IPv6 host env var",
+			env:   map[string]string{config.EnvHost: "[fe80::1%eth0]"},
+			check: func(t *testing.T, cfg config.Config) {
+				assert.Equal(t, "fe80::1%eth0", cfg.Host)
+				assert.Equal(t, "[fe80::1%eth0]:8080", cfg.Addr())
+			},
+		},
+		{
+			label: "should accept a log level in any case",
+			args:  []string{"-log-level=WARN"},
+			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, slog.LevelWarn, cfg.LogLevel) },
+		},
+		{
+			label: "should accept a log level env var in any case",
+			env:   map[string]string{config.EnvLogLevel: "Error"},
+			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, slog.LevelError, cfg.LogLevel) },
+		},
 	}
 
 	for _, tc := range testcases {
@@ -168,7 +194,39 @@ func TestParse_errors(t *testing.T) {
 			output: "port 70000",
 		},
 		{label: "should reject a host with a port", args: []string{"-host=localhost:80"}, output: `host "localhost:80"`},
-		{label: "should reject a bracketed IPv6 host", args: []string{"-host=[::1]"}, output: `host "[::1]"`},
+		{label: "should reject a bracketed host name", args: []string{"-host=[localhost]"}, output: `host "[localhost]"`},
+		{label: "should reject a bracketed IPv4 address", args: []string{"-host=[127.0.0.1]"}, output: `host "[127.0.0.1]"`},
+		{
+			label:  "should reject a bracketed host env var that is not IPv6",
+			env:    map[string]string{config.EnvHost: "[localhost]"},
+			output: config.EnvHost,
+		},
+		{
+			label:  "should reject a log level with an offset",
+			args:   []string{"-log-level=INFO+2"},
+			output: "must be debug, info, warn or error",
+		},
+		{
+			label:  "should reject a log level env var with an offset",
+			env:    map[string]string{config.EnvLogLevel: "debug-4"},
+			output: config.EnvLogLevel,
+		},
+		{
+			label:  "should reject a numeric log level",
+			args:   []string{"-log-level=0"},
+			output: "must be debug, info, warn or error",
+		},
+		{
+			label:  "should report an invalid env var with -version",
+			args:   []string{"-version"},
+			env:    map[string]string{config.EnvPort: "abc"},
+			output: config.EnvPort,
+		},
+		{
+			label:  "should report an invalid flag with -version",
+			args:   []string{"-version", "-port=70000"},
+			output: "port 70000",
+		},
 		{
 			label:  "should reject a host env var with a port",
 			env:    map[string]string{config.EnvHost: "localhost:80"},
@@ -198,15 +256,23 @@ func TestParse_help(t *testing.T) {
 	assert.Contains(t, output, config.EnvPort)
 }
 
-// -version skips flag validation: printing the version
-// must work whatever else is on the command line.
-func TestParse_version_skips_flag_validation(t *testing.T) {
+func TestParse_version(t *testing.T) {
 	t.Parallel()
 
-	cfg, _, err := parse(t, []string{"-version", "-port=70000"}, nil)
+	cfg, _, err := parse(t, []string{"-version"}, nil)
 	require.NoError(t, err)
 
 	assert.True(t, cfg.ShowVersion)
+}
+
+func TestParse_help_lists_the_log_levels(t *testing.T) {
+	t.Parallel()
+
+	_, output, err := parse(t, []string{"-h"}, nil)
+	require.ErrorIs(t, err, flag.ErrHelp)
+
+	assert.Contains(t, output, "minimum log level: debug, info, warn or error")
+	assert.Contains(t, output, `(default info)`)
 }
 
 func TestNewLogger(t *testing.T) {
