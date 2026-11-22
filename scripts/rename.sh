@@ -48,14 +48,20 @@ github_repo() {
 }
 old_repo=$(github_repo "$old_module")
 new_repo=$(github_repo "$new_module")
-# The image's source label: the repository URL when it is on GitHub.
-if [[ -n "$new_repo" ]]; then
-  new_source="https://github.com/$new_repo"
-elif [[ "$new_module" =~ ^(.+)/v[0-9]+$ ]]; then
-  new_source="https://${BASH_REMATCH[1]}"
-else
-  new_source="https://$new_module"
-fi
+# source_url <module> <owner/repo>: the project's source URL, for the image
+# label and the spec's contact: the repository when it is on GitHub, else the
+# module path without a /vN suffix.
+source_url() {
+  if [[ -n "$2" ]]; then
+    echo "https://github.com/$2"
+  elif [[ "$1" =~ ^(.+)/v[0-9]+$ ]]; then
+    echo "https://${BASH_REMATCH[1]}"
+  else
+    echo "https://$1"
+  fi
+}
+old_source=$(source_url "$old_module" "$old_repo")
+new_source=$(source_url "$new_module" "$new_repo")
 new_prefix=$(tr 'a-z-' 'A-Z_' <<<"$new_name")_
 warnings=()
 
@@ -168,14 +174,21 @@ for f in .golangci.yml .golangci.lite.yml; do
 done
 [[ "$new_module" == */* ]] || warnings+=("$new_module has no host: the image source label ($new_source) is a placeholder")
 
-# 4. The old mocks: make rename regenerates them under the new module path.
+# 4. The OpenAPI spec: info.title (two-space indent: never the title property
+#    of a schema) and the contact URL.
+if [[ -f api/openapi.yaml ]]; then
+  setvalue api/openapi.yaml '^  title:' ':.*' ": $new_name"
+  literal api/openapi.yaml "$old_source" "$new_source"
+fi
+
+# 5. The old mocks: make rename regenerates them under the new module path.
 if [[ "$old_module" != "$new_module" && -d "mocks/$old_module" ]]; then
   rm -rf "mocks/$old_module"
   find mocks -depth -type d -empty -exec rmdir {} \;
   changed+=("mocks/$old_module (removed)")
 fi
 
-# 5. Leftovers: the old module path anywhere else (a file type this script
+# 6. Leftovers: the old module path anywhere else (a file type this script
 #    doesn't cover yet), outside the CHANGELOG. The new module path and the
 #    new repository URL are removed from each line first: when they contain
 #    the old path (foo → foo-api, foo → foo/v2), they are not leftovers.

@@ -1,8 +1,9 @@
 name: Release
 
-# Publishes the Docker image of a release tag to ghcr.io/<owner>/<repo>, for
-# linux/amd64 and linux/arm64. Runs when a GitHub Release is published (create
-# it once the tag's CI run passed), or by hand to (re)publish an existing tag.
+# Publishes a release tag: the Docker image to ghcr.io/<owner>/<repo> (linux/
+# amd64 and linux/arm64), and the OpenAPI spec as an asset of the GitHub
+# Release. Runs when a GitHub Release is published (create it once the tag's
+# CI run passed), or by hand to (re)publish an existing tag.
 on:
   release:
     types: [published]
@@ -28,12 +29,17 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
-  image:
+  # What to publish, checked once for both jobs below.
+  resolve:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      packages: write
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      tags: ${{ steps.meta.outputs.tags }}
+      created: ${{ steps.meta.outputs.created }}
+      revision: ${{ steps.git.outputs.revision }}
+      name: ${{ steps.git.outputs.name }}
+      source: ${{ steps.git.outputs.source }}
     steps:
       # A published release moves latest unless it is a prerelease; a manual
       # run moves it only when asked, so republishing an old tag never moves
@@ -77,6 +83,31 @@ jobs:
             echo "source=$(make --no-print-directory print-SOURCE)"
           } >> "$GITHUB_OUTPUT"
 
+      # Checked here, not in the spec job: a wrong version stops the image
+      # too, even when the Release was created before the tag's CI passed.
+      # Tags cut before the spec existed (v0.3.0 and older) have none.
+      - name: The spec names this version
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          if [ -f api/openapi.yaml ]; then
+            bash scripts/openapi-version.sh "$TAG"
+          else
+            echo "::notice::$TAG has no api/openapi.yaml"
+          fi
+
+  image:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
@@ -93,18 +124,50 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ needs.resolve.outputs.tags }}
           build-args: |
-            NAME=${{ steps.git.outputs.name }}
-            SOURCE=${{ steps.git.outputs.source }}
-            VERSION=${{ steps.meta.outputs.tag }}
-            REVISION=${{ steps.git.outputs.revision }}
-            CREATED=${{ steps.meta.outputs.created }}
+            NAME=${{ needs.resolve.outputs.name }}
+            SOURCE=${{ needs.resolve.outputs.source }}
+            VERSION=${{ needs.resolve.outputs.tag }}
+            REVISION=${{ needs.resolve.outputs.revision }}
+            CREATED=${{ needs.resolve.outputs.created }}
 
       - name: Check the published image
         env:
-          TAG: ${{ steps.meta.outputs.tag }}
+          TAG: ${{ needs.resolve.outputs.tag }}
         run: |
           docker buildx imagetools inspect "$IMAGE:$TAG"
           docker run --rm "$IMAGE:$TAG" -version | tee version.txt
           grep -q " $TAG (revision " version.txt
+
+  # The spec clients generate code from, at a stable URL:
+  # https://github.com/<owner>/<repo>/releases/download/<tag>/openapi.yaml
+  spec:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # gh release upload
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+
+      # Tags cut before the spec existed (v0.3.0 and older) have nothing to
+      # attach; a manual run on a tag without a GitHub Release neither. The
+      # version was checked by resolve.
+      - name: Attach api/openapi.yaml to the release
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -f api/openapi.yaml ]; then
+            echo "::notice::$TAG has no api/openapi.yaml: nothing to attach"
+            exit 0
+          fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::notice::$TAG has no GitHub Release: nothing to attach the spec to"
+            exit 0
+          fi
+          gh release upload "$TAG" api/openapi.yaml --clobber
+          echo "Attached: ${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/openapi.yaml"

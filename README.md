@@ -42,6 +42,49 @@ own request input (query parameters, a body) answers directly with
 `404` and `405` keep `net/http`'s plain-text body: a catch-all route to turn
 them into problems would also turn every `405` into a `404`.
 
+## OpenAPI
+
+[`api/openapi.yaml`](api/openapi.yaml) describes the API (OpenAPI 3.0.3), so
+anyone can generate a client for it, for example in TypeScript:
+
+```sh
+npx @hey-api/openapi-ts -i api/openapi.yaml -o client
+```
+
+The spec is the contract, written by hand and kept honest by tests:
+
+- **`make openapi-lint`** ([vacuum](https://quobix.com/vacuum/), the
+  recommended rules, warnings included) runs in `make ci` and GitHub CI. A
+  rule that doesn't fit is switched off in `api/vacuum.yaml`, with a reason.
+- **The contract test** (`internal/api/openapi_test.go`, kin-openapi, a
+  test-only dependency: the server binary has no third-party module):
+  - the routes `api.New` registers and the spec's operations are the same
+    set, both ways;
+  - every response of the handler and component tests is validated against
+    the spec, an undocumented status included;
+  - every response the spec documents is produced by a test, so the spec
+    never promises what the service doesn't send.
+- **`make openapi-breaking`** ([oasdiff](https://www.oasdiff.com/)) runs in
+  `make ci` and GitHub CI: it compares the spec with the one in the last
+  final release (`vX.Y.Z`, never a prerelease) and fails on a change that
+  breaks clients generated from it (a removed operation or field, a changed
+  type, a new required parameter). Releases before the spec existed have
+  nothing to compare.
+- **Evolving the API:** additive changes (a new operation, a new optional
+  field) pass. A breaking change must be deliberate: add a new versioned path
+  (`/v2/...`) next to the old one, mark the old one `deprecated: true`, and
+  remove it in a later release, listing that removal in
+  `api/oasdiff-ignore.txt` in the same pull request (one line per change:
+  method, path and the message oasdiff printed).
+- **Not described:** the router's own `404` and `405` (plain text) and
+  `HEAD`.
+- **Why 3.0.3, not 3.1:** kin-openapi and most client generators support 3.0
+  best.
+- `info.version` is the last release; the release pull request bumps it, CI
+  checks it against the tag, and each release from v0.4.0 on carries the
+  spec as an asset, at a stable URL clients can pin:
+  `https://github.com/peczenyj/foo/releases/download/vX.Y.Z/openapi.yaml`.
+
 ## Running
 
 ```sh
@@ -55,7 +98,7 @@ Released images (linux/amd64 and linux/arm64) are on the GitHub Container
 Registry:
 
 ```sh
-docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.3.0   # or :latest
+docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.4.0   # or :latest
 ```
 
 ## Configuration
@@ -123,11 +166,11 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
 ```text
   help              Show available targets
   task              Before a commit: generate, tidy, fix, format, then run ci (edits files)
-  ci                All checks, read-only: mod-check, fmt-check, lint, lint-profiles, cover (same as GitHub CI)
+  ci                All checks, read-only: mod-check, fmt-check, lint, lint-profiles, openapi-lint, openapi-breaking, cover (same as GitHub CI)
   generate          go generate ./... + regenerate mocks
   go-generate       go generate ./...
   check-tools       Check every tool: missing → error with how to install it; other version → warning
-  install-tools     go install the pinned mockery, gotestsum and benchstat (TOOLS=gotestsum picks; needs network)
+  install-tools     go install the pinned mockery, gotestsum, benchstat, vacuum and oasdiff (TOOLS=gotestsum picks; needs network)
   build             Build the server binary, bin/<NAME>
   build-debug       Build bin/<NAME>-debug with debug symbols, no optimizations (for dlv)
   run               Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
@@ -138,6 +181,8 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
   bench-profile     CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
   lint              go vet + golangci-lint linters (LINT_PROFILE=full|lite)
   lint-profiles     Check the lite lint profile is a subset of full, and that the code passes it
+  openapi-lint      Lint the OpenAPI spec, api/openapi.yaml (vacuum; warnings fail)
+  openapi-breaking  Fail on OpenAPI changes that break clients of the last vX.Y.Z release (oasdiff)
   lint-fix          go fix + golangci-lint --fix (edits files)
   fmt               Format the code (gofumpt + gci)
   fmt-check         Fail if any file is not formatted
@@ -160,11 +205,13 @@ check, the hurl suite (`make test-functional`) and a smoke test of the Docker
 image, which `make ci` leaves out.
 
 Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/docs/welcome/install/)
-v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker, and three
+v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker, and five
 Go tools: [mockery](https://vektra.github.io/mockery/),
-[gotestsum](https://github.com/gotestyourself/gotestsum) and
-[benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat).
-`make install-tools` installs those three at the versions CI uses
+[gotestsum](https://github.com/gotestyourself/gotestsum),
+[benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat),
+[vacuum](https://quobix.com/vacuum/) (the OpenAPI linter) and
+[oasdiff](https://www.oasdiff.com/) (the OpenAPI breaking-change check).
+`make install-tools` installs those five at the versions CI uses
 (`go install`, into `$(go env GOPATH)/bin`); golangci-lint has its own
 install page. Tools are installed binaries, not `go tool`s pinned in
 `go.mod`: they keep working offline and after `go clean -cache -modcache`,
@@ -188,6 +235,7 @@ everything else derives from them:
 | `cmd/server/main.go` | `programName`: usage and `-version` output |
 | `internal/config/config.go` | `envPrefix = "FOO_"`: every environment variable name |
 | `Dockerfile` | `ARG NAME` and `ARG SOURCE` defaults, for a plain `docker build` (`make docker` passes both) |
+| `api/openapi.yaml` | `info.title` and the contact URL |
 | `.golangci.yml`, `.golangci.lite.yml` | gofumpt's `module-path`: empty, set only for a module without a dot in its first element (`widget`), whose imports gofumpt would otherwise take for the standard library |
 | `README.md`, `AGENTS.md` | prose, badges and examples |
 
@@ -199,7 +247,8 @@ anything.
 `make rename MODULE=<module path> NAME=<name>` rewrites all of them
 (`scripts/rename.sh`): the module path in Go files, `.mockery.yaml`, `go.mod`
 and the docs, the name in the Makefile, `programName`, the Dockerfile
-defaults, and `envPrefix` (the name upper-cased, `-` → `_`). It then
+defaults, the OpenAPI spec's title and contact URL, and `envPrefix` (the
+name upper-cased, `-` → `_`). It then
 regenerates the mocks under the new path (mockery must be installed:
 `make install-tools` first) and tidies `go.mod`. Running it twice changes
 nothing. It leaves the CHANGELOG (history) and the prose alone, warns about
@@ -299,13 +348,19 @@ from `devel`. Release tags (`v*`) are cut on `main`.
 ### Releases
 
 1. In a pull request to `devel`, rename `## [Unreleased]` in `CHANGELOG.md`
-   to the version and date, and open a new, empty `## [Unreleased]` above it.
+   to the version and date, open a new, empty `## [Unreleased]` above it,
+   and set `info.version` in `api/openapi.yaml` to the new version (without
+   the `v`). `bash scripts/openapi-version.sh vX.Y.Z` checks it.
 2. Merge `devel` into `main` with a pull request, using a merge commit (not
    squash), so both branches keep a shared history.
-3. Tag the merge commit (`git tag -a vX.Y.Z`) and push the tag; CI tests it.
+3. Tag the merge commit (`git tag -a vX.Y.Z`) and push the tag; CI tests it,
+   including that `info.version` matches the tag (a prerelease `-suffix` is
+   ignored: `v0.4.0-rc.1` expects `0.4.0`).
 4. Once that CI run passes, create the GitHub Release from the tag, with its
    CHANGELOG section as notes. Publishing it runs `release.yml`, which pushes
-   `ghcr.io/peczenyj/foo:vX.Y.Z` and `latest` (not for a prerelease).
+   `ghcr.io/peczenyj/foo:vX.Y.Z` and `latest` (not for a prerelease), and
+   attaches `api/openapi.yaml` to the release.
+5. Close the phase's milestone.
 
 To publish an existing tag again, run the Release workflow by hand (Actions,
 Release, Run workflow) with the tag; `latest` moves only if you tick it.

@@ -1,0 +1,118 @@
+# The HTTP API of this service: the contract clients generate code from.
+# Change it together with internal/api: the contract test
+# (internal/api/openapi_test.go) fails when they disagree. OpenAPI 3.0.3,
+# not 3.1: kin-openapi (the contract test) and most client generators support
+# 3.0 best. Linted by vacuum (make openapi-lint, ruleset api/vacuum.yaml).
+openapi: 3.0.3
+info:
+  title: foo
+  description: >-
+    Example Go HTTP service. GET /foo replies with a message; errors are
+    RFC 9457 problem details. The router's own 404 (unknown path) and 405
+    (another method, with an Allow header) are plain text and not described
+    here, and neither is HEAD.
+  version: 0.4.0
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  contact:
+    url: https://github.com/peczenyj/foo
+servers:
+  - url: http://localhost:8080
+    description: A local server (make run).
+tags:
+  - name: foo
+    description: The service's API.
+  - name: health
+    description: Probes for orchestrators and load balancers.
+paths:
+  /foo:
+    get:
+      operationId: getFoo
+      summary: Get the message
+      description: Returns the message of the service.
+      tags:
+        - foo
+      responses:
+        "200":
+          description: The message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageBody"
+              example:
+                message: bar
+        "400":
+          description: The request is invalid; `detail` says why.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              example:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                detail: name is too long
+        "500":
+          description: >-
+            The server could not complete the request. The cause is logged
+            on the server, never sent.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+              example:
+                type: about:blank
+                title: Internal Server Error
+                status: 500
+                detail: the server could not complete the request
+  /healthz:
+    get:
+      operationId: getHealthz
+      summary: Check liveness
+      description: Answers 200 with an empty body while the server is up.
+      tags:
+        - health
+      responses:
+        "200":
+          description: The server is up.
+components:
+  schemas:
+    MessageBody:
+      type: object
+      description: The body of a successful GET /foo.
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: The text GET /foo replies with.
+          example: bar
+    Problem:
+      type: object
+      description: >-
+        An RFC 9457 problem details object. New fields may be added: clients
+        must ignore the ones they don't know.
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: The problem type; about:blank when the status says it all.
+          example: about:blank
+        title:
+          type: string
+          description: The status text.
+          example: Bad Request
+        status:
+          type: integer
+          format: int32
+          description: The HTTP status code.
+          example: 400
+        detail:
+          type: string
+          description: What went wrong, for this occurrence.
+          example: name is too long

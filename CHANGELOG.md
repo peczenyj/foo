@@ -10,6 +10,23 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-22
+
+- `make openapi-breaking` (oasdiff, a new installed tool), in `make ci` and
+  CI, fails on OpenAPI changes that break clients of the last final release;
+  a deliberate break is listed in `api/oasdiff-ignore.txt` in the same pull
+  request.
+- The OpenAPI spec is attached to each GitHub Release
+  (`releases/download/vX.Y.Z/openapi.yaml`, a stable URL for client
+  generation), and CI checks on tag pushes that its `info.version` matches
+  the tag (`scripts/openapi-version.sh`); the release pull request bumps it.
+- OpenAPI: `api/openapi.yaml` (3.0.3) describes `GET /foo` (200, and 400 and
+  500 as problem details) and `GET /healthz`, so clients can be generated
+  from it. `make openapi-lint` (vacuum, a new installed tool) runs in
+  `make ci`; a contract test checks that the registered routes and the
+  spec's operations match both ways, that every test response matches the
+  spec, and that every documented response is produced.
+
 ## [0.3.0] - 2026-11-22
 
 - Secrets from files: every secret can also be read from the file that

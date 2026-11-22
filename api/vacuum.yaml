@@ -1,0 +1,7 @@
+# vacuum ruleset for api/openapi.yaml (make openapi-lint): the recommended
+# rules, warnings included (--fail-severity warn). A rule that doesn't fit is
+# switched off here, with the reason next to it; never silenced any other way.
+extends:
+  - - spectral:oas
+    - recommended
+rules: {}

@@ -128,6 +128,9 @@ func TestAPI(t *testing.T) {
 		},
 	}
 
+	// Every response is also checked against the OpenAPI spec.
+	spec := loadContract(t)
+
 	for _, tc := range testcases {
 		t.Run(tc.label, func(t *testing.T) {
 			t.Parallel()
@@ -147,6 +150,7 @@ func TestAPI(t *testing.T) {
 			status, body, headers := doRequest(t, api.New(fooer, logger), tc.method, tc.target)
 
 			assert.Equal(t, tc.status, status)
+			spec.check(t, tc.method, tc.target, status, headers, body)
 
 			switch {
 			case tc.message != "":

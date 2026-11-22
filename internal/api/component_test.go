@@ -72,7 +72,8 @@ func TestAPI_component_problem(t *testing.T) {
 	assert.NotContains(t, string(body), "secret")
 }
 
-// get sends GET path to srv over the network and returns the response.
+// get sends GET path to srv over the network, checks the response against
+// the OpenAPI spec and returns it.
 func get(t *testing.T,
 	srv *httptest.Server,
 	path string,
@@ -93,6 +94,9 @@ func get(t *testing.T,
 
 	body, err = io.ReadAll(response.Body)
 	require.NoError(t, err, "reading the response body")
+
+	// What crossed the network must match the OpenAPI spec too.
+	loadContract(t).check(t, http.MethodGet, path, response.StatusCode, response.Header, body)
 
 	return response.StatusCode, body, response.Header
 }
