@@ -32,7 +32,7 @@ new_module=$1 new_name=$2
 # existing repository, go.mod already holds the new module.
 old_module=$(awk -F'"' '$2 ~ /\/internal\/config$/ { sub(/\/internal\/config$/, "", $2); print $2; exit }' cmd/server/main.go)
 gomod_module=$(awk '/^module / { print $2; exit }' go.mod)
-old_name=$(awk '/^NAME[ \t]*\?=/ { print $3; exit }' Makefile)
+old_name=$(awk '/^NAME[ \t]*[?]=/ { print $3; exit }' Makefile)
 [[ -n "$old_module" && -n "$gomod_module" && -n "$old_name" ]] || {
   echo "error: cannot read the template's module (cmd/server/main.go imports), go.mod's module or NAME (Makefile)" >&2; exit 1; }
 
@@ -67,20 +67,37 @@ write() {
   fi
 }
 
-# literal <file> <old> <new>...: replace every literal occurrence, pair by pair.
+# literal <file> <old> <new>...: replace every literal occurrence of each old
+# value by its new value, in a single pass. At each position the earliest
+# match wins (the longest on a tie), and replaced text is never scanned
+# again, so a new value that contains an old one (foo → foo-api, foo →
+# foo/v2) is not replaced twice. Values go through the environment: awk -v
+# would interpret backslashes.
 literal() {
-  local file=$1 tmp="$1.rename.tmp"
+  local file=$1 n=0
   shift
-  cp "$file" "$tmp"
   while [[ $# -ge 2 ]]; do
-    awk -v old="$1" -v new="$2" '{
-      out = ""
-      while ((i = index($0, old)) > 0) { out = out substr($0, 1, i - 1) new; $0 = substr($0, i + length(old)) }
-      print out $0
-    }' "$tmp" >"$tmp.2" && mv "$tmp.2" "$tmp"
+    n=$((n + 1))
+    export "RENAME_OLD_$n=$1" "RENAME_NEW_$n=$2"
     shift 2
   done
-  write "$file" "$tmp"
+  RENAME_PAIRS=$n awk '
+    BEGIN { n = ENVIRON["RENAME_PAIRS"]; for (k = 1; k <= n; k++) { old[k] = ENVIRON["RENAME_OLD_" k]; new[k] = ENVIRON["RENAME_NEW_" k] } }
+    {
+      rest = $0; out = ""
+      while (1) {
+        best = 0; at = 0
+        for (k = 1; k <= n; k++) {
+          i = index(rest, old[k])
+          if (i > 0 && (at == 0 || i < at || (i == at && length(old[k]) > length(old[best])))) { at = i; best = k }
+        }
+        if (best == 0) break
+        out = out substr(rest, 1, at - 1) new[best]
+        rest = substr(rest, at + length(old[best]))
+      }
+      print out rest
+    }' "$file" >"$file.rename.tmp"
+  write "$file" "$file.rename.tmp"
 }
 
 # setvalue <file> <line-regex> <value-regex> <value>: on the lines matching
@@ -134,7 +151,7 @@ fi
 
 # 3. The name: Makefile, programName, envPrefix, Dockerfile defaults; and
 #    gofumpt's module path in the lint configs.
-setvalue Makefile '^NAME[ \t]*\\?=' '\\?=.*' "?= $new_name"
+setvalue Makefile '^NAME[ \t]*[?]=' '[?]=.*' "?= $new_name"
 setvalue cmd/server/main.go '^[ \t]*programName[ \t]*= "' '"[^"]*"' "\"$new_name\""
 setvalue internal/config/config.go 'envPrefix[ \t]*= "' '"[^"]*"' "\"$new_prefix\""
 setvalue Dockerfile '^ARG NAME=' '=.*' "=$new_name"
@@ -155,12 +172,29 @@ if [[ "$old_module" != "$new_module" && -d "mocks/$old_module" ]]; then
 fi
 
 # 5. Leftovers: the old module path anywhere else (a file type this script
-#    doesn't cover yet), outside the CHANGELOG.
+#    doesn't cover yet), outside the CHANGELOG. The new module path and the
+#    new repository URL are removed from each line first: when they contain
+#    the old path (foo → foo-api, foo → foo/v2), they are not leftovers.
 if [[ "$old_module" != "$new_module" ]]; then
   while IFS= read -r f; do
     warnings+=("still mentions $old_module: ${f#./}")
   done < <(grep -rIlF --exclude-dir=.git --exclude-dir=vendor --exclude-dir=bin --exclude-dir=node_modules \
-    --exclude=CHANGELOG.md --exclude='*.rename.tmp' -e "$old_module" . | sort)
+    --exclude=CHANGELOG.md --exclude='*.rename.tmp' -e "$old_module" . | sort |
+    RENAME_OLD="$old_module" RENAME_SKIP1="$new_module" RENAME_SKIP2="${new_repo:+https://github.com/$new_repo}" awk '
+      # strip <line> <text>: <line> without any literal occurrence of <text>.
+      function strip(line, text,   out, i) {
+        if (text == "") return line
+        out = ""
+        while ((i = index(line, text)) > 0) { out = out substr(line, 1, i - 1); line = substr(line, i + length(text)) }
+        return out line
+      }
+      {
+        file = $0
+        while ((getline line < file) > 0) {
+          if (index(strip(strip(line, ENVIRON["RENAME_SKIP1"]), ENVIRON["RENAME_SKIP2"]), ENVIRON["RENAME_OLD"]) > 0) { print file; break }
+        }
+        close(file)
+      }')
 fi
 
 echo "renamed $old_module ($old_name) → $new_module ($new_name), env prefix $new_prefix"
