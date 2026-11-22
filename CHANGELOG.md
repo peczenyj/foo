@@ -69,3 +69,10 @@ date, then open a new `## [Unreleased]` below it.
   failed with "Permission denied" there.
 
 ## [Unreleased]
+
+- Errors from `GET /foo` are RFC 9457 problem details
+  (`application/problem+json`) instead of plain text: `500` with a generic
+  `detail` (the error is logged), and `400` with only its `Detail` when a
+  `Fooer` returns a `*foo.InputError`, however it is wrapped. `problemFor`
+  is the single error-to-status mapping.
+  The router's `404` and `405` keep their plain-text body.
