@@ -16,12 +16,31 @@ Docker and CI.
 |---------|----------|
 | `GET /foo` | `200` `{"message":"bar"}`, `Content-Type: application/json` |
 | `GET /healthz` | `200`, empty body |
-| any other path | `404` |
-| another method on `/foo` or `/healthz` | `405`, with `Allow: GET, HEAD` |
-| the `Fooer` fails | `500`; the error is logged, never sent |
+| any other path | `404`, plain text |
+| another method on `/foo` or `/healthz` | `405`, plain text, with `Allow: GET, HEAD` |
+| the `Fooer` rejects its input (`*foo.InputError`) | `400` problem; `detail` is the error's `Detail` |
+| the `Fooer` fails | `500` problem; the error is logged, never sent |
 
-JSON is only for the success case: errors are the standard status, with Go's
-default plain-text body.
+Errors from `GET /foo` are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
+problem details, `Content-Type: application/problem+json`:
+
+```json
+{"type":"about:blank","title":"Internal Server Error","status":500,"detail":"the server could not complete the request"}
+```
+
+`type` is `about:blank` (the status says it all), `title` is the status
+text. A `4xx` `detail` explains what the client got wrong; a `5xx` `detail`
+is always that generic sentence, and the real error goes to the logs. One
+function, `problemFor` in `internal/api/problem.go`, maps the errors a
+handler gets from the domain to statuses (`a.writeError(w, err)`): to add a
+case, define a typed error (or a sentinel) and add it there. The client sees
+only the typed error's own field, never `err.Error()`, so context that
+wrappers add on the way up stays in the logs. A handler that validates its
+own request input (query parameters, a body) answers directly with
+`a.writeProblem(w, http.StatusBadRequest, "<what is wrong>")`. Never call
+`http.Error` in a handler. The router's own
+`404` and `405` keep `net/http`'s plain-text body: a catch-all route to turn
+them into problems would also turn every `405` into a `404`.
 
 ## Running
 
@@ -36,7 +55,7 @@ Released images (linux/amd64 and linux/arm64) are on the GitHub Container
 Registry:
 
 ```sh
-docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.2.0   # or :latest
+docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.3.0   # or :latest
 ```
 
 ## Configuration
@@ -52,6 +71,52 @@ invalid value is reported at startup, and the server exits with status 2.
 | `-log-format` | `FOO_LOG_FORMAT` | `text` | `text` or `json` |
 | `-shutdown-timeout` | `FOO_SHUTDOWN_TIMEOUT` | `10s` | grace period for in-flight requests |
 | `-version` | | | print the version and exit |
+
+### Secrets
+
+Secrets (API keys, tokens, passwords) are **environment-only** settings:
+never flags, which show up in `ps` and in shell history. They are held in a
+`config.Secret`, which prints, logs and encodes as `REDACTED` (any `fmt`
+verb, `slog` text and JSON, `json.Marshal`), or `(unset)` when it holds no
+value, so a config dump tells a missing secret from a configured one; only
+`Reveal()` returns the value, in the one place that sends it. A trailing
+newline (`\n` or `\r\n`, as `echo` or a file leave) is dropped; any other
+space is kept, since it can be part of the secret. A missing or blank
+required secret is a usage error at startup (exit 2, reported with every
+other invalid value), never a failure on the first request.
+
+foo needs no secret, so it declares none. Adding one takes three lines in
+`internal/config/config.go`, plus a row in the table above with "env only"
+in the flag column:
+
+```go
+EnvAPIKey = envPrefix + "API_KEY"                          // in the Env* constants
+APIKey    Secret                                           // in Config
+errs = append(errs, readSecret(getenv, EnvAPIKey, true, &c.APIKey)) // in readEnv
+```
+
+Then pass `cfg.APIKey.Reveal()` to whatever sends it.
+
+Every secret can also come from a file, with the `_FILE` convention of
+Docker and Kubernetes secrets: `FOO_API_KEY_FILE=/run/secrets/api_key`
+instead of `FOO_API_KEY=<value>`. The value then stays out of the process
+environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
+
+- The file is read once, at startup, up to 64 KiB, with the same trailing
+  newline rule. Relative paths resolve against the working directory, and
+  symlinks (Kubernetes mounts) are followed.
+- These are usage errors (exit 2), even for an optional secret, since setting
+  `_FILE` shows intent: both `FOO_API_KEY` and `FOO_API_KEY_FILE` set, a file
+  that is missing or can't be read, a file larger than 64 KiB. A blank file
+  counts as missing for a required secret. Errors name the variable and the
+  path, never the content.
+- The file is read to its end, so a named pipe or `/dev/stdin` holds
+  startup until the writer closes it. That is also how to pipe a secret in
+  without putting it in the environment:
+  `printf %s "$KEY" | FOO_API_KEY_FILE=/dev/stdin ./bin/foo`.
+- File permissions are left to the orchestrator: Kubernetes mounts secrets
+  `0644` unless `defaultMode` says otherwise, and Docker often `0444`, so a
+  permission warning would fire on most correct deployments.
 
 ## Development
 
@@ -234,7 +299,7 @@ from `devel`. Release tags (`v*`) are cut on `main`.
 ### Releases
 
 1. In a pull request to `devel`, rename `## [Unreleased]` in `CHANGELOG.md`
-   to the version and date, and open a new `## [Unreleased]` below it.
+   to the version and date, and open a new, empty `## [Unreleased]` above it.
 2. Merge `devel` into `main` with a pull request, using a merge commit (not
    squash), so both branches keep a shared history.
 3. Tag the merge commit (`git tag -a vX.Y.Z`) and push the tag; CI tests it.
@@ -247,5 +312,7 @@ Release, Run workflow) with the tag; `latest` moves only if you tick it.
 
 ### Changelog
 
-`CHANGELOG.md` is append-only: add your bullets at the end of the file, under
-`## [Unreleased]`.
+`CHANGELOG.md` lists the newest changes first: `## [Unreleased]` is the
+first section, and each pull request adds its bullets at the top of it.
+Released sections are never edited. When two open pull requests both add a
+bullet, the second one conflicts on GitHub: keep both bullets, newest first.
