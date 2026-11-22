@@ -34,8 +34,9 @@ endif
 # (binaries, image tag, labels, coverage filter). make rename changes NAME.
 NAME          ?= foo
 MODULE        := $(shell awk '/^module / { print $$2; exit }' go.mod)
-# The image's org.opencontainers.image.source label.
-SOURCE        ?= https://$(MODULE)
+# The image's org.opencontainers.image.source label: the repository URL
+# (github.com/owner/repo, without a /vN suffix or a subdirectory).
+SOURCE        ?= https://$(shell echo '$(MODULE)' | sed -E 's|^(github\.com/[^/]+/[^/]+).*|\1|; s|/v[0-9]+$$||')
 BIN           := bin/$(NAME)
 DEBUG_BIN     := bin/$(NAME)-debug
 # Scripts run from recipes (scripts/hurl.sh) find the binary here.

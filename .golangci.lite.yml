@@ -68,6 +68,11 @@ formatters:
     - gofumpt
     - gci
   settings:
+    gofumpt:
+      # Only for a module path without a dot in its first element (module
+      # widget): gofumpt would take its imports for the standard library.
+      # make rename sets it; empty otherwise.
+      module-path: ""
     gci:
       sections:
         - standard

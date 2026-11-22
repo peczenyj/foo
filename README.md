@@ -132,12 +132,16 @@ anything.
 
 `make rename MODULE=<module path> NAME=<name>` rewrites all of them
 (`scripts/rename.sh`): the module path in Go files, `.mockery.yaml`, `go.mod`
-and the docs (badges included), the name in the Makefile, `programName`, the
-Dockerfile defaults, and `envPrefix` (the name upper-cased, `-` → `_`). It
-then regenerates the mocks under the new path and tidies `go.mod`. Running it
-twice changes nothing; it leaves the CHANGELOG (history) and the prose alone,
-and reminds you of the per-repository settings it can't change (secrets,
-branch protection, Codecov).
+and the docs, the name in the Makefile, `programName`, the Dockerfile
+defaults, and `envPrefix` (the name upper-cased, `-` → `_`). It then
+regenerates the mocks under the new path (mockery must be installed:
+`make install-tools` first) and tidies `go.mod`. Running it twice changes
+nothing. It leaves the CHANGELOG (history) and the prose alone, warns about
+any file that still names the old module, and reminds you of the
+per-repository settings it can't change (secrets, branch protection,
+Codecov). README badges follow only when the new module is on `github.com`;
+a single-element module (`widget`) works too, with a placeholder image
+source label.
 
 - **A new project:** copy the template with
   [gonew](https://pkg.go.dev/golang.org/x/tools/cmd/gonew), which rewrites
@@ -149,8 +153,10 @@ branch protection, Codecov).
   ```
 
 - **An existing repository** with its own `go.mod`: copy the template's files
-  in, then `make rename MODULE=<the module in your go.mod> NAME=<name>`;
-  `go.mod` is kept when it already names that module.
+  in (not its `go.mod` and `go.sum`), then
+  `make install-tools && make rename MODULE=<the module in your go.mod> NAME=<name>`.
+  The template's imports are rewritten to your module, `go.mod` is kept, and
+  `go mod tidy` adds the template's dependencies.
 
 ### Lint profiles
 
