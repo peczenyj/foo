@@ -20,8 +20,13 @@ BENCHSTAT     ?= benchstat
 BENCHSTAT_MOD     := golang.org/x/perf
 BENCHSTAT_PKG     := $(BENCHSTAT_MOD)/cmd/benchstat
 BENCHSTAT_VERSION := v0.0.0-20261117185222-4febdb082b2c
+# vacuum lints the OpenAPI spec (api/openapi.yaml).
+VACUUM        ?= vacuum
+VACUUM_MOD     := github.com/daveshanley/vacuum
+VACUUM_PKG     := $(VACUUM_MOD)
+VACUUM_VERSION := v0.42.3
 # install-tools installs these (TOOLS=gotestsum to pick).
-TOOLS         ?= mockery gotestsum benchstat
+TOOLS         ?= mockery gotestsum benchstat vacuum
 # Lint profile: full (.golangci.yml, what CI runs) or lite (.golangci.lite.yml:
 # correctness only, for short, time-boxed work). A project switches with this
 # one line; make lint LINT_PROFILE=lite tries it once.
@@ -68,21 +73,21 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^$(MODULE)/mocks/')
 # which make runs left to right. .NOTPARALLEL keeps that order under make -j:
 # go already builds and tests in parallel on its own.
 .NOTPARALLEL:
-.PHONY: help task ci generate go-generate check-tools check-golangci-lint check-mockery check-gotestsum check-benchstat install-tools build build-debug run test cover bench bench-compare bench-profile lint lint-profiles lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker rename rename-files clean
+.PHONY: help task ci generate go-generate check-tools check-golangci-lint check-mockery check-gotestsum check-benchstat check-vacuum install-tools build build-debug run test cover bench bench-compare bench-profile lint lint-profiles openapi-lint lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker rename rename-files clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-17s %s\n",$$1,$$2}'
 
 task: generate tidy lint-fix fmt ci ## Before a commit: generate, tidy, fix, format, then run ci (edits files)
 
-ci: mod-check fmt-check lint lint-profiles cover ## All checks, read-only: mod-check, fmt-check, lint, lint-profiles, cover (same as GitHub CI)
+ci: mod-check fmt-check lint lint-profiles openapi-lint cover ## All checks, read-only: mod-check, fmt-check, lint, lint-profiles, openapi-lint, cover (same as GitHub CI)
 
 generate: go-generate mocks ## go generate ./... + regenerate mocks
 
 go-generate: ## go generate ./...
 	$(GO) generate ./...
 
-check-tools: check-golangci-lint check-mockery check-gotestsum check-benchstat ## Check every tool: missing → error with how to install it; other version → warning
+check-tools: check-golangci-lint check-mockery check-gotestsum check-benchstat check-vacuum ## Check every tool: missing → error with how to install it; other version → warning
 
 # Each target checks only the tools it runs.
 check-golangci-lint:
@@ -97,11 +102,15 @@ check-gotestsum:
 check-benchstat:
 	@bash scripts/check-tool.sh BENCHSTAT $(BENCHSTAT) $(BENCHSTAT_MOD) $(BENCHSTAT_VERSION) "make install-tools TOOLS=benchstat"
 
-install-tools: ## go install the pinned mockery, gotestsum and benchstat (TOOLS=gotestsum picks; needs network)
-	$(if $(filter-out mockery gotestsum benchstat,$(TOOLS)),$(error unknown TOOLS: $(filter-out mockery gotestsum benchstat,$(TOOLS)); known: mockery gotestsum benchstat))
+check-vacuum:
+	@bash scripts/check-tool.sh VACUUM $(VACUUM) $(VACUUM_MOD) $(VACUUM_VERSION) "make install-tools TOOLS=vacuum"
+
+install-tools: ## go install the pinned mockery, gotestsum, benchstat and vacuum (TOOLS=gotestsum picks; needs network)
+	$(if $(filter-out mockery gotestsum benchstat vacuum,$(TOOLS)),$(error unknown TOOLS: $(filter-out mockery gotestsum benchstat vacuum,$(TOOLS)); known: mockery gotestsum benchstat vacuum))
 	$(if $(filter mockery,$(TOOLS)),$(GO) install $(MOCKERY_PKG)@$(MOCKERY_VERSION))
 	$(if $(filter gotestsum,$(TOOLS)),$(GO) install $(GOTESTSUM_PKG)@$(GOTESTSUM_VERSION))
 	$(if $(filter benchstat,$(TOOLS)),$(GO) install $(BENCHSTAT_PKG)@$(BENCHSTAT_VERSION))
+	$(if $(filter vacuum,$(TOOLS)),$(GO) install $(VACUUM_PKG)@$(VACUUM_VERSION))
 
 build: ## Build the server binary, bin/<NAME>
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/server
@@ -138,6 +147,9 @@ lint: check-golangci-lint ## go vet + golangci-lint linters (LINT_PROFILE=full|l
 lint-profiles: check-golangci-lint ## Check the lite lint profile is a subset of full, and that the code passes it
 	GOLANGCI_LINT='$(GOLANGCI_LINT)' bash scripts/lint-profiles.sh
 	$(GOLANGCI_LINT) run --config .golangci.lite.yml ./...
+
+openapi-lint: check-vacuum ## Lint the OpenAPI spec, api/openapi.yaml (vacuum; warnings fail)
+	$(VACUUM) lint --details --ruleset api/vacuum.yaml --fail-severity warn api/openapi.yaml
 
 lint-fix: check-golangci-lint ## go fix + golangci-lint --fix (edits files)
 	$(GO) fix ./...

@@ -10,6 +10,13 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+- OpenAPI: `api/openapi.yaml` (3.0.3) describes `GET /foo` (200, and 400 and
+  500 as problem details) and `GET /healthz`, so clients can be generated
+  from it. `make openapi-lint` (vacuum, a new installed tool) runs in
+  `make ci`; a contract test checks that the registered routes and the
+  spec's operations match both ways, that every test response matches the
+  spec, and that every documented response is produced.
+
 ## [0.3.0] - 2026-11-22
 
 - Secrets from files: every secret can also be read from the file that
