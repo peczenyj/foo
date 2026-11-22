@@ -5,8 +5,8 @@
 #
 # Missing binary: error with the install hint (exit 1). Other version: a
 # warning only, since results may differ but usually don't. The version is
-# read from the binary's Go build info (go version -m), which every tool here
-# has, whatever way it was installed.
+# read from the binary's Go build info (go version -m). A binary without it
+# (a shim from asdf or mise, a wrapper script) only gets a warning.
 set -euo pipefail
 
 var=$1 bin=$2 mod=$3 want=$4 hint=$5
@@ -19,7 +19,7 @@ path=$(command -v "$bin" 2>/dev/null) || {
   exit 1
 }
 
-have=$("${GO:-go}" version -m "$path" 2>/dev/null | awk -v m="$mod" '$1 == "mod" && $2 == m { print $3 }')
+have=$({ "${GO:-go}" version -m "$path" 2>/dev/null || true; } | awk -v m="$mod" '$1 == "mod" && $2 == m { print $3 }')
 
 if [[ -z "$have" ]]; then
   echo "warning: cannot read the version of $path; CI uses $want ($hint)" >&2
