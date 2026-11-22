@@ -43,9 +43,12 @@ jobs:
       - name: The lite lint profile is a subset of full, and passes
         run: make lint-profiles
 
-      # vacuum and oasdiff, at the versions pinned in the Makefile.
+      # vacuum and oasdiff, at the versions pinned in the Makefile; built
+      # once per version, then restored from the cache.
       - name: Install vacuum and oasdiff
-        run: make install-tools TOOLS="vacuum oasdiff"
+        uses: ./.github/actions/install-tools
+        with:
+          tools: vacuum oasdiff
 
       - name: OpenAPI spec (vacuum)
         run: make openapi-lint
@@ -80,7 +83,9 @@ jobs:
 
       # Tools are installed binaries, at the versions pinned in the Makefile.
       - name: Install gotestsum
-        run: make install-tools TOOLS=gotestsum
+        uses: ./.github/actions/install-tools
+        with:
+          tools: gotestsum
 
       - name: Vet
         run: go vet ./...
@@ -108,7 +113,9 @@ jobs:
           go-version-file: go.mod
 
       - name: Install mockery
-        run: make install-tools TOOLS=mockery
+        uses: ./.github/actions/install-tools
+        with:
+          tools: mockery
 
       - name: Regenerate mocks
         run: make mocks
