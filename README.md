@@ -68,7 +68,10 @@ The spec is the contract, written by hand and kept honest by tests:
   `HEAD`.
 - **Why 3.0.3, not 3.1:** kin-openapi and most client generators support 3.0
   best.
-- `info.version` is the last release; the release pull request bumps it.
+- `info.version` is the last release; the release pull request bumps it, CI
+  checks it against the tag, and each release from v0.4.0 on carries the
+  spec as an asset, at a stable URL clients can pin:
+  `https://github.com/peczenyj/foo/releases/download/vX.Y.Z/openapi.yaml`.
 
 ## Running
 
@@ -331,13 +334,19 @@ from `devel`. Release tags (`v*`) are cut on `main`.
 ### Releases
 
 1. In a pull request to `devel`, rename `## [Unreleased]` in `CHANGELOG.md`
-   to the version and date, and open a new, empty `## [Unreleased]` above it.
+   to the version and date, open a new, empty `## [Unreleased]` above it,
+   and set `info.version` in `api/openapi.yaml` to the new version (without
+   the `v`). `bash scripts/openapi-version.sh vX.Y.Z` checks it.
 2. Merge `devel` into `main` with a pull request, using a merge commit (not
    squash), so both branches keep a shared history.
-3. Tag the merge commit (`git tag -a vX.Y.Z`) and push the tag; CI tests it.
+3. Tag the merge commit (`git tag -a vX.Y.Z`) and push the tag; CI tests it,
+   including that `info.version` matches the tag (a prerelease `-suffix` is
+   ignored: `v0.4.0-rc.1` expects `0.4.0`).
 4. Once that CI run passes, create the GitHub Release from the tag, with its
    CHANGELOG section as notes. Publishing it runs `release.yml`, which pushes
-   `ghcr.io/peczenyj/foo:vX.Y.Z` and `latest` (not for a prerelease).
+   `ghcr.io/peczenyj/foo:vX.Y.Z` and `latest` (not for a prerelease), and
+   attaches `api/openapi.yaml` to the release.
+5. Close the phase's milestone.
 
 To publish an existing tag again, run the Release workflow by hand (Actions,
 Release, Run workflow) with the tag; `latest` moves only if you tick it.

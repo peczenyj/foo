@@ -10,6 +10,10 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+- The OpenAPI spec is attached to each GitHub Release
+  (`releases/download/vX.Y.Z/openapi.yaml`, a stable URL for client
+  generation), and CI checks on tag pushes that its `info.version` matches
+  the tag (`scripts/openapi-version.sh`); the release pull request bumps it.
 - OpenAPI: `api/openapi.yaml` (3.0.3) describes `GET /foo` (200, and 400 and
   500 as problem details) and `GET /healthz`, so clients can be generated
   from it. `make openapi-lint` (vacuum, a new installed tool) runs in

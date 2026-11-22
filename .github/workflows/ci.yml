@@ -45,6 +45,12 @@ jobs:
       - name: OpenAPI spec (vacuum)
         run: make openapi-lint
 
+      # On a release tag: the spec must name that version (bumped in the
+      # release pull request), before the GitHub Release attaches it.
+      - name: OpenAPI info.version matches the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: bash scripts/openapi-version.sh "$GITHUB_REF_NAME"
+
       - name: go.mod and go.sum are tidy and verified
         run: make mod-check
 
