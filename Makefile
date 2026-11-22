@@ -87,6 +87,7 @@ check-benchstat:
 	@scripts/check-tool.sh BENCHSTAT $(BENCHSTAT) $(BENCHSTAT_MOD) $(BENCHSTAT_VERSION) "make install-tools TOOLS=benchstat"
 
 install-tools: ## go install the pinned mockery, gotestsum and benchstat (TOOLS=gotestsum picks; needs network)
+	$(if $(filter-out mockery gotestsum benchstat,$(TOOLS)),$(error unknown TOOLS: $(filter-out mockery gotestsum benchstat,$(TOOLS)); known: mockery gotestsum benchstat))
 	$(if $(filter mockery,$(TOOLS)),$(GO) install $(MOCKERY_PKG)@$(MOCKERY_VERSION))
 	$(if $(filter gotestsum,$(TOOLS)),$(GO) install $(GOTESTSUM_PKG)@$(GOTESTSUM_VERSION))
 	$(if $(filter benchstat,$(TOOLS)),$(GO) install $(BENCHSTAT_PKG)@$(BENCHSTAT_VERSION))
