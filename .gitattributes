@@ -1,4 +1,6 @@
-# CHANGELOG is append-only: every MR adds a bullet at the tail, so two MRs
-# always overlap on the same line. `union` keeps BOTH sides of a conflicting
-# hunk instead of flagging it, auto-resolving the append.
+# CHANGELOG is newest first: every PR adds a bullet at the top of
+# [Unreleased], so two PRs always overlap on the same lines. `union` keeps
+# BOTH sides of a conflicting hunk instead of flagging it, for local merges
+# and rebases. GitHub's merge ignores merge drivers: there, resolve by
+# keeping both bullets, newest first.
 CHANGELOG.md merge=union

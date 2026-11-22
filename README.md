@@ -72,6 +72,35 @@ invalid value is reported at startup, and the server exits with status 2.
 | `-shutdown-timeout` | `FOO_SHUTDOWN_TIMEOUT` | `10s` | grace period for in-flight requests |
 | `-version` | | | print the version and exit |
 
+### Secrets
+
+Secrets (API keys, tokens, passwords) are **environment-only** settings:
+never flags, which show up in `ps` and in shell history. They are held in a
+`config.Secret`, which prints, logs and encodes as `REDACTED` (any `fmt`
+verb, `slog` text and JSON, `json.Marshal`), or `(unset)` when it holds no
+value, so a config dump tells a missing secret from a configured one; only
+`Reveal()` returns the value, in the one place that sends it. A trailing
+newline (`\n` or `\r\n`, as `echo` or a file leave) is dropped; any other
+space is kept, since it can be part of the secret. A missing or blank
+required secret is a usage error at startup (exit 2, reported with every
+other invalid value), never a failure on the first request.
+
+foo needs no secret, so it declares none. Adding one takes three lines in
+`internal/config/config.go`, plus a row in the table above with "env only"
+in the flag column:
+
+```go
+EnvAPIKey = envPrefix + "API_KEY"                          // in the Env* constants
+APIKey    Secret                                           // in Config
+errs = append(errs, readSecret(getenv, EnvAPIKey, true, &c.APIKey)) // in readEnv
+```
+
+Then pass `cfg.APIKey.Reveal()` to whatever sends it.
+
+Not supported yet: the `_FILE` convention of Docker and Kubernetes secrets
+(`FOO_API_KEY_FILE=/run/secrets/api_key`), which also keeps the value out of
+the process environment (`/proc/<pid>/environ`).
+
 ## Development
 
 ```text
@@ -253,7 +282,7 @@ from `devel`. Release tags (`v*`) are cut on `main`.
 ### Releases
 
 1. In a pull request to `devel`, rename `## [Unreleased]` in `CHANGELOG.md`
-   to the version and date, and open a new `## [Unreleased]` below it.
+   to the version and date, and open a new, empty `## [Unreleased]` above it.
 2. Merge `devel` into `main` with a pull request, using a merge commit (not
    squash), so both branches keep a shared history.
 3. Tag the merge commit (`git tag -a vX.Y.Z`) and push the tag; CI tests it.
@@ -266,5 +295,7 @@ Release, Run workflow) with the tag; `latest` moves only if you tick it.
 
 ### Changelog
 
-`CHANGELOG.md` is append-only: add your bullets at the end of the file, under
-`## [Unreleased]`.
+`CHANGELOG.md` lists the newest changes first: `## [Unreleased]` is the
+first section, and each pull request adds its bullets at the top of it.
+Released sections are never edited. When two open pull requests both add a
+bullet, the second one conflicts on GitHub: keep both bullets, newest first.
