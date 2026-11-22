@@ -1,5 +1,8 @@
 ARG GO_VERSION=1.27
-FROM golang:${GO_VERSION} AS build
+# The build stage runs on the builder's own platform and cross-compiles for
+# the target one (TARGETOS/TARGETARCH, set by BuildKit): a multi-platform
+# build needs no emulation.
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION} AS build
 
 WORKDIR /src
 
@@ -12,11 +15,13 @@ COPY . .
 
 ARG VERSION=dev
 ARG REVISION=unknown
+ARG TARGETOS
+ARG TARGETARCH
 
 # Static, reproducible binary: no cgo, no local paths, no debug symbols.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
       -trimpath \
       -ldflags "-s -w -X main.version=${VERSION} -X main.revision=${REVISION}" \
       -o /out/foo \

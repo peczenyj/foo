@@ -41,3 +41,7 @@ date, then open a new `## [Unreleased]` below it.
 - README badges, a wiki, and `AGENTS.md` for AI coding agents.
 
 ## [Unreleased]
+
+- Released images are published to `ghcr.io/peczenyj/foo` (the tag, and
+  `latest`) for linux/amd64 and linux/arm64 when a GitHub Release is
+  published; the Release workflow can also republish an existing tag by hand.
