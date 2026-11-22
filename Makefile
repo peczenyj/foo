@@ -41,6 +41,8 @@ BIN           := bin/$(NAME)
 DEBUG_BIN     := bin/$(NAME)-debug
 # Scripts run from recipes (scripts/hurl.sh) find the binary here.
 export BIN
+# Recipes run scripts with "bash scripts/x.sh", never "scripts/x.sh": a copy
+# made with gonew comes from a module zip, which keeps no executable bits.
 VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION_FLAGS := -X main.version=$(VERSION) -X main.revision=$(REVISION)
@@ -84,16 +86,16 @@ check-tools: check-golangci-lint check-mockery check-gotestsum check-benchstat #
 
 # Each target checks only the tools it runs.
 check-golangci-lint:
-	@scripts/check-tool.sh GOLANGCI_LINT $(GOLANGCI_LINT) $(GOLANGCI_LINT_MOD) $(GOLANGCI_LINT_VERSION) "$(GOLANGCI_LINT_INSTALL)"
+	@bash scripts/check-tool.sh GOLANGCI_LINT $(GOLANGCI_LINT) $(GOLANGCI_LINT_MOD) $(GOLANGCI_LINT_VERSION) "$(GOLANGCI_LINT_INSTALL)"
 
 check-mockery:
-	@scripts/check-tool.sh MOCKERY $(MOCKERY) $(MOCKERY_MOD) $(MOCKERY_VERSION) "make install-tools TOOLS=mockery"
+	@bash scripts/check-tool.sh MOCKERY $(MOCKERY) $(MOCKERY_MOD) $(MOCKERY_VERSION) "make install-tools TOOLS=mockery"
 
 check-gotestsum:
-	@scripts/check-tool.sh GOTESTSUM $(GOTESTSUM) $(GOTESTSUM_MOD) $(GOTESTSUM_VERSION) "make install-tools TOOLS=gotestsum"
+	@bash scripts/check-tool.sh GOTESTSUM $(GOTESTSUM) $(GOTESTSUM_MOD) $(GOTESTSUM_VERSION) "make install-tools TOOLS=gotestsum"
 
 check-benchstat:
-	@scripts/check-tool.sh BENCHSTAT $(BENCHSTAT) $(BENCHSTAT_MOD) $(BENCHSTAT_VERSION) "make install-tools TOOLS=benchstat"
+	@bash scripts/check-tool.sh BENCHSTAT $(BENCHSTAT) $(BENCHSTAT_MOD) $(BENCHSTAT_VERSION) "make install-tools TOOLS=benchstat"
 
 install-tools: ## go install the pinned mockery, gotestsum and benchstat (TOOLS=gotestsum picks; needs network)
 	$(if $(filter-out mockery gotestsum benchstat,$(TOOLS)),$(error unknown TOOLS: $(filter-out mockery gotestsum benchstat,$(TOOLS)); known: mockery gotestsum benchstat))
@@ -122,7 +124,7 @@ bench: check-benchstat ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT into 
 	$(BENCHSTAT) bench.out
 
 bench-compare: check-benchstat ## Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
-	BENCH='$(BENCH)' BENCH_COUNT=$(BENCH_COUNT) BENCHSTAT='$(BENCHSTAT)' scripts/bench-compare.sh $(BASE)
+	BENCH='$(BENCH)' BENCH_COUNT=$(BENCH_COUNT) BENCHSTAT='$(BENCHSTAT)' bash scripts/bench-compare.sh $(BASE)
 
 bench-profile: ## CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
 	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -cpuprofile=cpu.out -memprofile=mem.out -o bench.test $(BENCH_PKG)
@@ -134,7 +136,7 @@ lint: check-golangci-lint ## go vet + golangci-lint linters (LINT_PROFILE=full|l
 	$(GOLANGCI_LINT) run --config $(LINT_CONFIG) ./...
 
 lint-profiles: check-golangci-lint ## Check the lite lint profile is a subset of full, and that the code passes it
-	GOLANGCI_LINT='$(GOLANGCI_LINT)' scripts/lint-profiles.sh
+	GOLANGCI_LINT='$(GOLANGCI_LINT)' bash scripts/lint-profiles.sh
 	$(GOLANGCI_LINT) run --config .golangci.lite.yml ./...
 
 lint-fix: check-golangci-lint ## go fix + golangci-lint --fix (edits files)
@@ -152,7 +154,7 @@ mod-check: ## Fail if go.mod/go.sum need tidying (read-only), then verify
 	$(GO) mod verify
 
 test-functional: build ## Functional tests: the hurl suite against a fresh bin/<NAME> (needs hurl)
-	scripts/hurl.sh
+	bash scripts/hurl.sh
 
 test-integration: check-gotestsum ## Integration tests (TestIntegration_*, build tag integration; may need Docker)
 	$(TEST_RUNNER) -race -count=1 -tags integration -run '^TestIntegration' ./...
@@ -176,7 +178,7 @@ rename: rename-files generate tidy ## Adapt the template: make rename MODULE=<mo
 rename-files:
 	$(if $(filter command line,$(origin MODULE)),,$(error make rename needs MODULE=<new module path>, e.g. example.com/acme/widget))
 	$(if $(filter command line,$(origin NAME)),,$(error make rename needs NAME=<new name>, e.g. widget))
-	scripts/rename.sh '$(MODULE)' '$(NAME)'
+	bash scripts/rename.sh '$(MODULE)' '$(NAME)'
 
 print-%: # make print-BIN: print a variable (scripts ask make instead of repeating its values)
 	@echo '$($*)'
