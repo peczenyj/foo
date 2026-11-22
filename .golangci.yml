@@ -129,9 +129,15 @@ formatters:
     - gofumpt
     - gci
   settings:
-    # gci groups the imports: standard library, third party, then this module.
+    gofumpt:
+      # Only for a module path without a dot in its first element (module
+      # widget): gofumpt would take its imports for the standard library.
+      # make rename sets it; empty otherwise.
+      module-path: ""
+    # gci groups the imports: standard library, third party, then this module
+    # (localmodule: the module path read from go.mod).
     gci:
       sections:
         - standard
         - default
-        - prefix(github.com/peczenyj/foo)
+        - localmodule

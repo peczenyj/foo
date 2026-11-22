@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the hurl suite (test/hurl/*.hurl).
 #
-# Usage:  scripts/hurl.sh             build bin/foo, start it on a free port, test it, stop it
+# Usage:  scripts/hurl.sh             build the binary, start it on a free port, test it, stop it
 #         scripts/hurl.sh <base-url>  test an already running server, e.g. http://localhost:8080
 set -euo pipefail
 
@@ -18,9 +18,13 @@ if [[ $# -gt 0 ]]; then
   exit
 fi
 
-# make test-functional builds bin/foo as a prerequisite (no recursive make);
-# run on its own, the script builds it.
-[[ -n "${MAKELEVEL:-}" ]] || make --no-print-directory build
+# make test-functional builds the binary as a prerequisite and exports BIN
+# (no recursive make); run on its own, the script asks make for both.
+if [[ -z "${MAKELEVEL:-}" ]]; then
+  make --no-print-directory build
+  BIN=$(make --no-print-directory print-BIN)
+fi
+: "${BIN:?BIN is not set: run make test-functional}"
 
 log=$(mktemp)
 pid=""
@@ -35,8 +39,8 @@ cleanup() {
 trap cleanup EXIT
 
 # Port 0: the kernel picks a free port; the server logs the one it bound.
-# -log-level=info: the "listening" line is an info log, whatever FOO_LOG_LEVEL says.
-bin/foo -host=127.0.0.1 -port=0 -log-format=json -log-level=info 2>"$log" &
+# -log-level=info: the "listening" line is an info log, whatever the env says.
+"$BIN" -host=127.0.0.1 -port=0 -log-format=json -log-level=info 2>"$log" &
 pid=$!
 
 addr=""

@@ -40,4 +40,32 @@ date, then open a new `## [Unreleased]` below it.
 - Branches: `devel` (default) and protected, release-only `main`.
 - README badges, a wiki, and `AGENTS.md` for AI coding agents.
 
+## [0.2.0] - 2026-11-22
+
+- Released images are published to `ghcr.io/peczenyj/foo` (the tag, and
+  `latest`) for linux/amd64 and linux/arm64 when a GitHub Release is
+  published; the Release workflow can also republish an existing tag by hand.
+- mockery, gotestsum and benchstat are installed binaries, like golangci-lint,
+  instead of `go tool`s in `go.mod`: `make install-tools` installs the pinned
+  versions, each target checks the tools it runs, and `go.mod` drops their
+  dependencies.
+- Two lint profiles: full (`.golangci.yml`, what CI runs) and lite
+  (`.golangci.lite.yml`, correctness linters only), selected with
+  `LINT_PROFILE`; `make lint-profiles`, in `make ci`, checks that lite stays
+  a subset of full.
+- One project name: `NAME` in the Makefile and the module path in `go.mod`
+  drive the binary paths, the image tag and labels, the coverage filter and
+  gci's import grouping; environment variables share one `envPrefix`. The
+  image's entrypoint is now `/server` instead of `/foo`. The README lists
+  the few places that still name the project.
+- `make rename MODULE=<module path> NAME=<name>` adapts the template to
+  another module and name (Go imports, `go.mod`, mocks, `programName`,
+  `envPrefix`, Dockerfile defaults, docs), for a new project copied with
+  `gonew` or for an existing repository with its own `go.mod`; it handles
+  `/vN` modules and modules without a dot (`widget`), and warns about any
+  file that still names the old module.
+- Fix: the Makefile runs its scripts with `bash`, so a copy made with
+  `gonew` works: Go module zips keep no executable bits, and every script
+  failed with "Permission denied" there.
+
 ## [Unreleased]
