@@ -27,13 +27,16 @@ type Problem struct {
 }
 
 // problemFor maps an error to the status and detail of its problem response.
-// It is the only place that does: to support a new kind of error, add a
-// sentinel (like foo.ErrInvalidInput) and a case here.
+// It is the only place that does: to support a new kind of error, add a typed
+// error (like foo.InputError) or a sentinel, and a case here. The detail sent
+// comes from the typed error's own field, never from err.Error(): wrappers up
+// the chain may add internal context, which belongs in the logs only.
 func problemFor(err error) (status int, detail string) {
+	var inputErr *foo.InputError
+
 	switch {
-	case errors.Is(err, foo.ErrInvalidInput):
-		// Written for the client (see foo.ErrInvalidInput).
-		return http.StatusBadRequest, err.Error()
+	case errors.As(err, &inputErr):
+		return http.StatusBadRequest, inputErr.Detail
 	default:
 		return http.StatusInternalServerError, detailInternal
 	}

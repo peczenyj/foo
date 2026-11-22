@@ -65,25 +65,28 @@ func TestAPI(t *testing.T) {
 			logged: "secret db failure",
 		},
 		{
-			label: "should reply 400 with the detail of invalid input",
+			label: "should reply 400 with the detail of an input error",
 			setup: func(m *foomock.Fooer) {
-				m.EXPECT().Foo(mock.Anything).Return("", fmt.Errorf("%w: name is too long", foo.ErrInvalidInput)).Once()
+				m.EXPECT().Foo(mock.Anything).Return("", &foo.InputError{Detail: "name is too long"}).Once()
 			},
 			method: http.MethodGet,
 			target: "/foo",
 			status: http.StatusBadRequest,
-			detail: "invalid input: name is too long",
+			detail: "name is too long",
+			logged: "level=DEBUG msg=\"request rejected\" status=400 error=\"invalid input: name is too long\"",
 		},
 		{
-			label: "should reply 400 for invalid input wrapped twice",
+			label: "should send only the input error's detail, never its wrappers",
 			setup: func(m *foomock.Fooer) {
-				err := fmt.Errorf("checking the request: %w", fmt.Errorf("%w: empty name", foo.ErrInvalidInput))
+				// Internal context added up the chain reaches the logs, not the client.
+				err := fmt.Errorf("account 42 in secret shard eu-3: %w", &foo.InputError{Detail: "empty name"})
 				m.EXPECT().Foo(mock.Anything).Return("", err).Once()
 			},
 			method: http.MethodGet,
 			target: "/foo",
 			status: http.StatusBadRequest,
-			detail: "checking the request: invalid input: empty name",
+			detail: "empty name",
+			logged: "account 42 in secret shard eu-3: invalid input: empty name",
 		},
 		{
 			label:  "should return 404 for an unknown path",
@@ -138,7 +141,8 @@ func TestAPI(t *testing.T) {
 
 			var logs bytes.Buffer
 
-			logger := slog.New(slog.NewTextHandler(&logs, nil))
+			// Debug level: client errors are logged at debug, with the full chain.
+			logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 			status, body, headers := doRequest(t, api.New(fooer, logger), tc.method, tc.target)
 
