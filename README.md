@@ -32,6 +32,13 @@ FOO_PORT=9090 FOO_LOG_FORMAT=json make run
 curl localhost:8080/foo                    # {"message":"bar"}
 ```
 
+Released images (linux/amd64 and linux/arm64) are on the GitHub Container
+Registry:
+
+```sh
+docker run --rm -p 8080:8080 ghcr.io/peczenyj/foo:v0.1.0   # or :latest
+```
+
 ## Configuration
 
 Flags win over environment variables, which win over the defaults. Every
@@ -145,6 +152,20 @@ CI fails when the mocks are stale.
 `devel` is the default branch: merge requests target it. `main` holds
 releases only; it is protected and changes reach it through a pull request
 from `devel`. Release tags (`v*`) are cut on `main`.
+
+### Releases
+
+1. In a pull request to `devel`, rename `## [Unreleased]` in `CHANGELOG.md`
+   to the version and date, and open a new `## [Unreleased]` below it.
+2. Merge `devel` into `main` with a pull request, using a merge commit (not
+   squash), so both branches keep a shared history.
+3. Tag the merge commit (`git tag -a vX.Y.Z`) and push the tag; CI tests it.
+4. Once that CI run passes, create the GitHub Release from the tag, with its
+   CHANGELOG section as notes. Publishing it runs `release.yml`, which pushes
+   `ghcr.io/peczenyj/foo:vX.Y.Z` and `latest` (not for a prerelease).
+
+To publish an existing tag again, run the Release workflow by hand (Actions,
+Release, Run workflow) with the tag; `latest` moves only if you tick it.
 
 ### Changelog
 

@@ -27,7 +27,7 @@ This file provides guidance to AI coding agents (Claude Code, Codex, Gemini CLI,
 
 ## Conventions
 
-- Branches: `devel` is the default branch and the target of feature PRs; `main` is release-only and protected (PRs from `devel`, CI must pass). Never push to `main` directly.
+- Branches: `devel` is the default branch and the target of feature PRs; `main` is release-only and protected (PRs from `devel`, CI must pass). Never push to `main` directly. Releases: the CHANGELOG rename goes to `devel`, `devel` → `main` is merged with a merge commit (never squash), the tag `vX.Y.Z` is cut on that merge commit, and publishing its GitHub Release runs `.github/workflows/release.yml`, which pushes `ghcr.io/peczenyj/foo:vX.Y.Z` (+ `latest`) for linux/amd64 and linux/arm64 (manual runs republish an existing tag). The Dockerfile cross-compiles (`--platform=$BUILDPLATFORM`, `TARGETOS`/`TARGETARCH`): keep the runtime stage free of `RUN`, so arm64 builds need no emulation.
 - Tests use testify (`require` when the test can't continue, `assert` otherwise), call `t.Parallel()`, and never bind fixed ports.
 - Logging: `logger.Error(...)`, not `ErrorContext(ctx, ...)`: nothing reads values from the context, and a cancelled request context must never look like it could affect logging. The global `slog` logger is acceptable too. `sloglint` is configured accordingly (`context: ""`, `no-global: ""`).
 - Imports are grouped std / third-party / `github.com/peczenyj/foo` (gci); `make fmt` fixes them.

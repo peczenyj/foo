@@ -1,0 +1,104 @@
+name: Release
+
+# Publishes the Docker image of a release tag to ghcr.io/peczenyj/foo, for
+# linux/amd64 and linux/arm64. Runs when a GitHub Release is published (create
+# it once the tag's CI run passed), or by hand to (re)publish an existing tag.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish, e.g. v0.1.0
+        required: true
+        type: string
+      latest:
+        description: Also point the latest image tag at it
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # A published release moves latest unless it is a prerelease; a manual
+      # run moves it only when asked, so republishing an old tag never moves
+      # latest backwards.
+      - name: Resolve the tag
+        id: meta
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          LATEST: ${{ (github.event_name == 'release' && !github.event.release.prerelease) || inputs.latest }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::$TAG is not a release tag (vX.Y.Z or vX.Y.Z-prerelease)"
+            exit 1
+          fi
+          tags="$IMAGE:$TAG"
+          if [ "$LATEST" = true ]; then tags="$tags,$IMAGE:latest"; fi
+          {
+            echo "tag=$TAG"
+            echo "tags=$tags"
+            echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+          echo "Publishing: $tags"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.meta.outputs.tag }}
+          fetch-depth: 0 # all branches, to check that the tag is on main
+
+      - name: The tag is on main
+        id: git
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo "::error::$TAG is not on main: release tags are cut on main"
+            exit 1
+          }
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # context: . builds the checked-out tag; the action's default (the git
+      # context of the triggering ref) would build devel on a manual run.
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.tag }}
+            REVISION=${{ steps.git.outputs.revision }}
+            CREATED=${{ steps.meta.outputs.created }}
+
+      - name: Check the published image
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$TAG"
+          docker run --rm "$IMAGE:$TAG" -version | tee version.txt
+          grep -q "^foo $TAG " version.txt
