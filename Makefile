@@ -65,7 +65,7 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^$(MODULE)/mocks/')
 # which make runs left to right. .NOTPARALLEL keeps that order under make -j:
 # go already builds and tests in parallel on its own.
 .NOTPARALLEL:
-.PHONY: help task ci generate go-generate check-tools check-golangci-lint check-mockery check-gotestsum check-benchstat install-tools build build-debug run test cover bench bench-compare bench-profile lint lint-profiles lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker clean
+.PHONY: help task ci generate go-generate check-tools check-golangci-lint check-mockery check-gotestsum check-benchstat install-tools build build-debug run test cover bench bench-compare bench-profile lint lint-profiles lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker rename rename-files clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-17s %s\n",$$1,$$2}'
@@ -169,6 +169,13 @@ docker: ## Build the Docker image
 	docker build --build-arg NAME=$(NAME) --build-arg SOURCE=$(SOURCE) \
 		--build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) \
 		--build-arg CREATED=$$(date -u +%Y-%m-%dT%H:%M:%SZ) -t $(NAME):$(VERSION) .
+
+rename: rename-files generate tidy ## Adapt the template: make rename MODULE=<module path> NAME=<name>
+
+rename-files:
+	$(if $(filter command line,$(origin MODULE)),,$(error make rename needs MODULE=<new module path>, e.g. example.com/acme/widget))
+	$(if $(filter command line,$(origin NAME)),,$(error make rename needs NAME=<new name>, e.g. widget))
+	scripts/rename.sh '$(MODULE)' '$(NAME)'
 
 print-%: # make print-BIN: print a variable (scripts ask make instead of repeating its values)
 	@echo '$($*)'

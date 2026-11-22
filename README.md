@@ -83,6 +83,7 @@ invalid value is reported at startup, and the server exits with status 2.
   tidy              go mod tidy + verify
   vendor            go mod tidy + vendor + verify (vendor/ is git-ignored)
   docker            Build the Docker image
+  rename            Adapt the template: make rename MODULE=<module path> NAME=<name>
   clean             Remove build artefacts
 ```
 
@@ -128,6 +129,28 @@ The GitHub workflows read the repository from `${{ github.repository }}`
 and the name from `make print-NAME`; the image's entrypoint is a fixed
 `/server`. `make build NAME=widget` builds `bin/widget` without editing
 anything.
+
+`make rename MODULE=<module path> NAME=<name>` rewrites all of them
+(`scripts/rename.sh`): the module path in Go files, `.mockery.yaml`, `go.mod`
+and the docs (badges included), the name in the Makefile, `programName`, the
+Dockerfile defaults, and `envPrefix` (the name upper-cased, `-` → `_`). It
+then regenerates the mocks under the new path and tidies `go.mod`. Running it
+twice changes nothing; it leaves the CHANGELOG (history) and the prose alone,
+and reminds you of the per-repository settings it can't change (secrets,
+branch protection, Codecov).
+
+- **A new project:** copy the template with
+  [gonew](https://pkg.go.dev/golang.org/x/tools/cmd/gonew), which rewrites
+  the module path and imports, then set the name:
+
+  ```sh
+  go run golang.org/x/tools/cmd/gonew@latest github.com/peczenyj/foo example.com/acme/widget
+  cd widget && make rename MODULE=example.com/acme/widget NAME=widget
+  ```
+
+- **An existing repository** with its own `go.mod`: copy the template's files
+  in, then `make rename MODULE=<the module in your go.mod> NAME=<name>`;
+  `go.mod` is kept when it already names that module.
 
 ### Lint profiles
 

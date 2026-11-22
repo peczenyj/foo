@@ -58,3 +58,7 @@ date, then open a new `## [Unreleased]` below it.
   gci's import grouping; environment variables share one `envPrefix`. The
   image's entrypoint is now `/server` instead of `/foo`. The README lists
   the few places that still name the project.
+- `make rename MODULE=<module path> NAME=<name>` adapts the template to
+  another module and name (Go imports, `go.mod`, mocks, `programName`,
+  `envPrefix`, Dockerfile defaults, docs); the README shows it with `gonew`
+  for a new project.
