@@ -1,9 +1,27 @@
 GO            ?= go
+# Tools are installed by each developer, not pinned in go.mod: they keep
+# working offline and with clean Go caches. CI installs the same versions.
+# make check-tools tells you what is missing; make install-tools installs the
+# Go-installed ones (golangci-lint: see its install page).
 GOLANGCI_LINT ?= golangci-lint
-# golangci-lint is installed by each developer; CI pins the same version
-# (.github/workflows/ci.yml). make check-tools tells you what to install.
-GOLANGCI_LINT_VERSION := 2.15.0
+GOLANGCI_LINT_MOD     := github.com/golangci/golangci-lint/v2
+# Keep in sync with the golangci-lint-action version in .github/workflows/ci.yml.
+GOLANGCI_LINT_VERSION := v2.15.0
 GOLANGCI_LINT_INSTALL := https://golangci-lint.run/docs/welcome/install/
+MOCKERY       ?= mockery
+MOCKERY_MOD     := github.com/vektra/mockery/v3
+MOCKERY_PKG     := $(MOCKERY_MOD)
+MOCKERY_VERSION := v3.9.1
+GOTESTSUM     ?= gotestsum
+GOTESTSUM_MOD     := gotest.tools/gotestsum
+GOTESTSUM_PKG     := $(GOTESTSUM_MOD)
+GOTESTSUM_VERSION := v1.13.0
+BENCHSTAT     ?= benchstat
+BENCHSTAT_MOD     := golang.org/x/perf
+BENCHSTAT_PKG     := $(BENCHSTAT_MOD)/cmd/benchstat
+BENCHSTAT_VERSION := v0.0.0-20261117185222-4febdb082b2c
+# install-tools installs these (TOOLS=gotestsum to pick).
+TOOLS         ?= mockery gotestsum benchstat
 BIN           := bin/foo
 DEBUG_BIN     := bin/foo-debug
 VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -11,10 +29,10 @@ REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION_FLAGS := -X main.version=$(VERSION) -X main.revision=$(REVISION)
 LDFLAGS       := -s -w $(VERSION_FLAGS)
 COVERPROFILE  ?= coverage.out
-# Tests run through gotestsum (a go tool, pinned in go.mod); flags after --
-# go to go test. Formats: pkgname (default), testname, dots, github-actions.
+# Tests run through gotestsum; flags after -- go to go test.
+# Formats: pkgname (default), testname, dots, github-actions.
 GOTESTSUM_FORMAT ?= pkgname
-GOTESTSUM      = $(GO) tool gotestsum --format $(GOTESTSUM_FORMAT) --
+TEST_RUNNER    = $(GOTESTSUM) --format $(GOTESTSUM_FORMAT) --
 # Benchmarks: BENCH filters by name; BENCH_COUNT repeats each one so that
 # benchstat can report mean ± variation instead of a single noisy run.
 # Profiles need a single package: BENCH_PKG.
@@ -31,7 +49,7 @@ COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^github.com/peczenyj/foo/mo
 # which make runs left to right. .NOTPARALLEL keeps that order under make -j:
 # go already builds and tests in parallel on its own.
 .NOTPARALLEL:
-.PHONY: help task ci generate go-generate check-tools build build-debug run test cover bench bench-compare bench-profile lint lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker clean
+.PHONY: help task ci generate go-generate check-tools check-golangci-lint check-mockery check-gotestsum check-benchstat install-tools build build-debug run test cover bench bench-compare bench-profile lint lint-fix fmt fmt-check mod-check mocks test-functional test-integration tidy vendor docker clean
 
 help: ## Show available targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*## "}{printf "  %-17s %s\n",$$1,$$2}'
@@ -45,16 +63,25 @@ generate: go-generate mocks ## go generate ./... + regenerate mocks
 go-generate: ## go generate ./...
 	$(GO) generate ./...
 
-check-tools: ## Fail with install instructions if golangci-lint is missing
-	@command -v $(GOLANGCI_LINT) >/dev/null 2>&1 || { \
-		echo "error: golangci-lint not found ($(GOLANGCI_LINT))." >&2; \
-		echo "Install golangci-lint v$(GOLANGCI_LINT_VERSION), the version CI uses:" >&2; \
-		echo "  $(GOLANGCI_LINT_INSTALL)" >&2; \
-		echo "or point to another binary: make <target> GOLANGCI_LINT=/path/to/golangci-lint" >&2; \
-		exit 1; }
-	@v=$$($(GOLANGCI_LINT) version --short 2>/dev/null); \
-	[ "$$v" = "$(GOLANGCI_LINT_VERSION)" ] || \
-		echo "warning: golangci-lint $$v is installed, CI uses $(GOLANGCI_LINT_VERSION): results may differ ($(GOLANGCI_LINT_INSTALL))" >&2
+check-tools: check-golangci-lint check-mockery check-gotestsum check-benchstat ## Check every tool: missing → error with how to install it; other version → warning
+
+# Each target checks only the tools it runs.
+check-golangci-lint:
+	@scripts/check-tool.sh GOLANGCI_LINT $(GOLANGCI_LINT) $(GOLANGCI_LINT_MOD) $(GOLANGCI_LINT_VERSION) "$(GOLANGCI_LINT_INSTALL)"
+
+check-mockery:
+	@scripts/check-tool.sh MOCKERY $(MOCKERY) $(MOCKERY_MOD) $(MOCKERY_VERSION) "make install-tools TOOLS=mockery"
+
+check-gotestsum:
+	@scripts/check-tool.sh GOTESTSUM $(GOTESTSUM) $(GOTESTSUM_MOD) $(GOTESTSUM_VERSION) "make install-tools TOOLS=gotestsum"
+
+check-benchstat:
+	@scripts/check-tool.sh BENCHSTAT $(BENCHSTAT) $(BENCHSTAT_MOD) $(BENCHSTAT_VERSION) "make install-tools TOOLS=benchstat"
+
+install-tools: ## go install the pinned mockery, gotestsum and benchstat (TOOLS=gotestsum picks; needs network)
+	$(if $(filter mockery,$(TOOLS)),$(GO) install $(MOCKERY_PKG)@$(MOCKERY_VERSION))
+	$(if $(filter gotestsum,$(TOOLS)),$(GO) install $(GOTESTSUM_PKG)@$(GOTESTSUM_VERSION))
+	$(if $(filter benchstat,$(TOOLS)),$(GO) install $(BENCHSTAT_PKG)@$(BENCHSTAT_VERSION))
 
 build: ## Build the server binary into bin/
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/server
@@ -65,37 +92,37 @@ build-debug: ## Build bin/foo-debug with debug symbols, no optimizations (for dl
 run: ## Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
 	$(GO) run ./cmd/server $(ARGS)
 
-test: ## Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
-	$(GOTESTSUM) -race -count=1 ./...
+test: check-gotestsum ## Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
+	$(TEST_RUNNER) -race -count=1 ./...
 
-cover: ## Run tests with a coverage summary (mocks excluded)
-	$(GOTESTSUM) -race -covermode=atomic -coverprofile=$(COVERPROFILE) $(COVER_PKGS)
+cover: check-gotestsum ## Run tests with a coverage summary (mocks excluded)
+	$(TEST_RUNNER) -race -covermode=atomic -coverprofile=$(COVERPROFILE) $(COVER_PKGS)
 	$(GO) tool cover -func=$(COVERPROFILE) | tail -1
 
-bench: ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT into bench.out, summarised by benchstat
+bench: check-benchstat ## Benchmarks (time, B/op, allocs/op) x BENCH_COUNT into bench.out, summarised by benchstat
 	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -count=$(BENCH_COUNT) ./... > bench.out || { cat bench.out; exit 1; }
-	$(GO) tool benchstat bench.out
+	$(BENCHSTAT) bench.out
 
-bench-compare: ## Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
-	BENCH='$(BENCH)' BENCH_COUNT=$(BENCH_COUNT) scripts/bench-compare.sh $(BASE)
+bench-compare: check-benchstat ## Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
+	BENCH='$(BENCH)' BENCH_COUNT=$(BENCH_COUNT) BENCHSTAT='$(BENCHSTAT)' scripts/bench-compare.sh $(BASE)
 
 bench-profile: ## CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
 	$(GO) test -run='^$$' -bench='$(BENCH)' -benchmem -cpuprofile=cpu.out -memprofile=mem.out -o bench.test $(BENCH_PKG)
 	@echo "profiles: go tool pprof -top bench.test cpu.out"
 	@echo "          go tool pprof -top -sample_index=alloc_space bench.test mem.out"
 
-lint: check-tools ## go vet + golangci-lint linters
+lint: check-golangci-lint ## go vet + golangci-lint linters
 	$(GO) vet ./...
 	$(GOLANGCI_LINT) run ./...
 
-lint-fix: check-tools ## go fix + golangci-lint --fix (edits files)
+lint-fix: check-golangci-lint ## go fix + golangci-lint --fix (edits files)
 	$(GO) fix ./...
 	$(GOLANGCI_LINT) run --fix ./...
 
-fmt: check-tools ## Format the code (gofumpt + gci)
+fmt: check-golangci-lint ## Format the code (gofumpt + gci)
 	$(GOLANGCI_LINT) fmt ./...
 
-fmt-check: check-tools ## Fail if any file is not formatted
+fmt-check: check-golangci-lint ## Fail if any file is not formatted
 	$(GOLANGCI_LINT) fmt --diff ./...
 
 mod-check: ## Fail if go.mod/go.sum need tidying (read-only), then verify
@@ -105,11 +132,11 @@ mod-check: ## Fail if go.mod/go.sum need tidying (read-only), then verify
 test-functional: build ## Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
 	scripts/hurl.sh
 
-test-integration: ## Integration tests (TestIntegration_*, build tag integration; may need Docker)
-	$(GOTESTSUM) -race -count=1 -tags integration -run '^TestIntegration' ./...
+test-integration: check-gotestsum ## Integration tests (TestIntegration_*, build tag integration; may need Docker)
+	$(TEST_RUNNER) -race -count=1 -tags integration -run '^TestIntegration' ./...
 
-mocks: ## Regenerate mocks/ with mockery (.mockery.yaml)
-	$(GO) tool mockery
+mocks: check-mockery ## Regenerate mocks/ with mockery (.mockery.yaml)
+	$(MOCKERY)
 
 tidy: ## go mod tidy + verify
 	$(GO) mod tidy && $(GO) mod verify

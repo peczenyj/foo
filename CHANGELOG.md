@@ -45,3 +45,7 @@ date, then open a new `## [Unreleased]` below it.
 - Released images are published to `ghcr.io/peczenyj/foo` (the tag, and
   `latest`) for linux/amd64 and linux/arm64 when a GitHub Release is
   published; the Release workflow can also republish an existing tag by hand.
+- mockery, gotestsum and benchstat are installed binaries, like golangci-lint,
+  instead of `go tool`s in `go.mod`: `make install-tools` installs the pinned
+  versions, each target checks the tools it runs, and `go.mod` drops their
+  dependencies.
