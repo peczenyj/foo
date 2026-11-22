@@ -59,8 +59,8 @@ func (s Secret) String() string {
 // itself calls Format, even for %#v).
 func (s Secret) GoString() string { return s.String() }
 
-// Format implements fmt.Formatter, so every verb (%x, %q, %d…) prints
-// REDACTED too, not only %v and %s.
+// Format implements fmt.Formatter, so every verb (%x, %q, %d…) prints what
+// String does (REDACTED, or (unset) without a value), not only %v and %s.
 func (s Secret) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte(s.String())) }
 
 // LogValue implements slog.LogValuer.
