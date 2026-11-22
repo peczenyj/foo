@@ -125,6 +125,37 @@ jobs:
           git status --porcelain
           test -z "$(git status --porcelain)" || { echo "mocks are stale: run make mocks and commit" >&2; exit 1; }
 
+  # The lite kit (make export-lite) must pass on its own: exported and renamed
+  # into a temporary directory, it runs its own make ci there.
+  lite-kit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0 # keep in sync with GOLANGCI_LINT_VERSION in the Makefile
+          install-only: true
+
+      - name: Export the lite kit
+        run: make export-lite DEST="$RUNNER_TEMP/widget" MODULE=example.com/acme/widget NAME=widget
+
+      - name: The kit pins the template's golangci-lint
+        run: |
+          want=$(make --no-print-directory print-GOLANGCI_LINT_VERSION)
+          have=$(make --no-print-directory -C "$RUNNER_TEMP/widget" print-GOLANGCI_LINT_VERSION)
+          [ "$have" = "$want" ] || { echo "::error::_kit/Makefile pins golangci-lint $have, the template $want"; exit 1; }
+
+      - name: make ci in the exported kit
+        working-directory: ${{ runner.temp }}/widget
+        run: make ci
+
   vulncheck:
     runs-on: ubuntu-latest
     timeout-minutes: 10

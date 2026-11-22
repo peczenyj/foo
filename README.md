@@ -195,6 +195,7 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
   vendor            go mod tidy + vendor + verify (vendor/ is git-ignored)
   docker            Build the Docker image
   rename            Adapt the template: make rename MODULE=<module path> NAME=<name>
+  export-lite       Copy the lite kit, renamed, into DEST: make export-lite DEST=<dir> MODULE=<module path> NAME=<name> [FORCE=1]
   clean             Remove build artefacts
 ```
 
@@ -297,6 +298,42 @@ source label.
   `make install-tools && make rename MODULE=<the module in your go.mod> NAME=<name>`.
   The template's imports are rewritten to your module, `go.mod` is kept, and
   `go mod tidy` adds the template's dependencies.
+
+### Lite kit
+
+For short, time-boxed work, the lite kit is a smaller copy of the template
+that leaves out what such work doesn't need: mocks (mockery), the hurl suite,
+benchmarks, the OpenAPI spec and its checks, Codecov, release automation and
+Dependabot. It keeps:
+
+- the service: `cmd/server`, `internal/config`, `internal/foo` and
+  `internal/api` with their unit and component tests; the handler tests use
+  a hand-written fake `Fooer` instead of mocks;
+- a lite Makefile (`build`, `run`, `test`, `cover`, `lint`, `fmt`, `task`,
+  `ci`, `docker`…), whose only tool to install is golangci-lint;
+- `.golangci.lite.yml` as `.golangci.yml`, the Dockerfile, `.dockerignore`,
+  `.gitignore`;
+- a GitHub workflow and a `.gitlab-ci.yml` with lint, test and docker jobs;
+- `AGENTS.md`, trimmed, and `CLAUDE.md`.
+
+Its tests keep testify: it is test-only (never in the binary) and keeps the
+kit's tests readable like the template's.
+
+```sh
+make export-lite DEST=../widget MODULE=example.com/acme/widget NAME=widget
+cd ../widget && make ci
+```
+
+`make export-lite` assembles the kit in a temporary directory, renames it
+(`scripts/rename.sh`, as `make rename` does), tidies its `go.mod` (no
+kin-openapi), then copies it into `DEST` (an existing repository, or a new
+directory) and lists the files it copied, for one "project skeleton" commit.
+If any of those files already exists in `DEST`, it copies nothing and lists
+them; `FORCE=1` overwrites them. The kit's own files live in `_kit/` (the
+leading underscore keeps them out of the template's `go ./...`); the rest
+comes from the template as it is (`scripts/export-lite.sh` lists them). CI
+exports the kit and runs its `make ci` (the `lite-kit` job), so a template
+change that breaks it fails there.
 
 ### Lint profiles
 
