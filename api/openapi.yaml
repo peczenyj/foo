@@ -11,7 +11,7 @@ info:
     RFC 9457 problem details. The router's own 404 (unknown path) and 405
     (another method, with an Allow header) are plain text and not described
     here, and neither is HEAD.
-  version: 0.4.0
+  version: 0.5.0
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
