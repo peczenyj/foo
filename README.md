@@ -282,7 +282,7 @@ from `devel`. Release tags (`v*`) are cut on `main`.
 ### Releases
 
 1. In a pull request to `devel`, rename `## [Unreleased]` in `CHANGELOG.md`
-   to the version and date, and open a new `## [Unreleased]` below it.
+   to the version and date, and open a new, empty `## [Unreleased]` above it.
 2. Merge `devel` into `main` with a pull request, using a merge commit (not
    squash), so both branches keep a shared history.
 3. Tag the merge commit (`git tag -a vX.Y.Z`) and push the tag; CI tests it.
@@ -295,5 +295,7 @@ Release, Run workflow) with the tag; `latest` moves only if you tick it.
 
 ### Changelog
 
-`CHANGELOG.md` is append-only: add your bullets at the end of the file, under
-`## [Unreleased]`.
+`CHANGELOG.md` lists the newest changes first: `## [Unreleased]` is the
+first section, and each pull request adds its bullets at the top of it.
+Released sections are never edited. When two open pull requests both add a
+bullet, the second one conflicts on GitHub: keep both bullets, newest first.
