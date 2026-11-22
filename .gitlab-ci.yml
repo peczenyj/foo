@@ -90,10 +90,15 @@ openapi:
   stage: lint
   variables:
     GO_TOOLS: vacuum oasdiff
-    # All history and tags: the breaking-change check compares the spec with
-    # the last release tag (a shallow clone has none, and the check skips).
+    # All history: the breaking-change check compares the spec with the last
+    # release tag (a shallow clone has none, and the check skips).
     GIT_DEPTH: 0
   script:
+    # The runner fetches only the tags that point into this pipeline's
+    # history; release tags sit on main's merge commits, so the newest one is
+    # not among them (from devel, or a branch of it), and the check would
+    # compare with an older release. Fetch them all.
+    - git fetch --quiet --force --tags origin
     - make openapi-lint openapi-breaking
     # On a release tag: the spec must name that version.
     - if [ -n "${CI_COMMIT_TAG:-}" ]; then bash scripts/openapi-version.sh "$CI_COMMIT_TAG"; fi
