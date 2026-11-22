@@ -35,6 +35,9 @@ jobs:
       - name: Formatting (gofumpt + gci)
         run: make fmt-check
 
+      - name: The lite lint profile is a subset of full, and passes
+        run: make lint-profiles
+
       - name: go.mod and go.sum are tidy and verified
         run: make mod-check
 
