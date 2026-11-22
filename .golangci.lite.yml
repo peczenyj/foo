@@ -1,0 +1,75 @@
+---
+# Lite lint profile: make lint LINT_PROFILE=lite (or set LINT_PROFILE in the
+# Makefile). For short, time-boxed work.
+#
+# It keeps what finds bugs and drops what enforces style:
+# - kept: the standard set (errcheck, govet, ineffassign, staticcheck,
+#   unused), the correctness linters below, and the same formatters (they fix
+#   themselves: make fmt);
+# - left out: the style and readability linters (wsl_v5, nlreturn, lll, mnd,
+#   funlen, funcorder, godot, revive, gocritic…), the error-wrapping policy
+#   (err113, wrapcheck), the test-structure rules (paralleltest, tparallel,
+#   thelper, testpackage) and the modernisation hints.
+#
+# Lite must stay a subset of .golangci.yml (the full profile, what CI runs):
+# code that passes full always passes lite. make lint-profiles checks that
+# every linter and formatter here is enabled there too, and runs lite. The
+# settings and exclusions of the linters kept here are copied from
+# .golangci.yml unchanged: change them in both files.
+#
+# Moving to full: make lint-fix LINT_PROFILE=full, then fix what remains.
+version: "2"
+
+run:
+  timeout: 5m
+  build-tags:
+    - integration
+  modules-download-mode: readonly
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - contextcheck
+    - durationcheck
+    - errchkjson
+    - errorlint
+    - forcetypeassert
+    - gosec
+    - nilerr
+    - nilnesserr
+    - noctx
+    - sloglint
+    - testifylint
+    - usestdlibvars
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+    sloglint:
+      context: ""
+      no-global: ""
+    testifylint:
+      enable-all: true
+  exclusions:
+    paths:
+      - mocks
+    rules:
+      - path: '_test\.go'
+        linters:
+          - errcheck
+
+formatters:
+  exclusions:
+    paths:
+      - mocks
+  enable:
+    - gofumpt
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/peczenyj/foo)
