@@ -71,7 +71,8 @@ date, then open a new `## [Unreleased]` below it.
 ## [Unreleased]
 
 - Secrets: `config.Secret` prints, logs and encodes as `REDACTED` (every
-  `fmt` verb, `slog`, JSON) and returns its value only through `Reveal()`;
-  secrets are environment-only settings (`readSecret`), and a missing
-  required one is a usage error (exit 2). foo declares none; the README
+  `fmt` verb, `slog`, JSON), or `(unset)` without a value, and returns its
+  value only through `Reveal()`; secrets are environment-only settings
+  (`readSecret`, which drops a trailing newline), and a missing required
+  one is a usage error (exit 2). foo declares none; the README
   shows the three lines to add one.

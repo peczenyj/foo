@@ -96,7 +96,26 @@ func TestSecret_Reveal(t *testing.T) {
 
 	assert.Empty(t, zero.Reveal())
 	assert.False(t, zero.IsSet())
-	assert.Equal(t, redacted, zero.String(), "even an unset secret prints REDACTED")
+}
+
+// An unset secret shows "(unset)", so a config dump tells a missing secret
+// from a configured one without revealing anything.
+func TestSecret_unset_shows_unset(t *testing.T) {
+	t.Parallel()
+
+	var holder settings
+
+	assert.Equal(t, "(unset)", holder.APIKey.String())
+	assert.Equal(t, "(unset)", holder.APIKey.GoString())
+	assert.Equal(t, "(unset)", fmt.Sprintf("%x", holder.APIKey))
+	assert.Equal(t, "(unset)", holder.APIKey.LogValue().String())
+	assert.Contains(t, fmt.Sprintf("%+v", holder), "APIKey:(unset)")
+
+	out, err := json.Marshal(holder)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"Name":"","APIKey":"(unset)"}`, string(out))
+
+	assert.Equal(t, redacted, config.NewSecret("").String(), "set, even to an empty value: REDACTED")
 }
 
 func TestReadSecret(t *testing.T) {
@@ -112,6 +131,23 @@ func TestReadSecret(t *testing.T) {
 		errText  string // expected substring of the error; empty: no error
 	}{
 		{label: "should read a set secret", env: map[string]string{name: secretValue}, required: true, want: secretValue},
+		{
+			label: "should drop a trailing newline (echo, mounted files)",
+			env:   map[string]string{name: secretValue + "\n"},
+			want:  secretValue,
+		},
+		{label: "should drop a trailing CRLF", env: map[string]string{name: secretValue + "\r\n"}, want: secretValue},
+		{
+			label: "should keep spaces, which can be part of a secret",
+			env:   map[string]string{name: " " + secretValue + " "},
+			want:  " " + secretValue + " ",
+		},
+		{
+			label:    "should reject a required secret that is only a newline",
+			env:      map[string]string{name: "\n"},
+			required: true,
+			errText:  name + " is required",
+		},
 		{label: "should leave an optional secret unset", required: false},
 		{label: "should reject a missing required secret", required: true, errText: name + " is required"},
 		{
