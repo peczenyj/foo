@@ -8,38 +8,36 @@ Append-only: each merge request adds its bullets at the end of
 with `merge=union`). To release, rename `[Unreleased]` to the version and
 date, then open a new `## [Unreleased]` below it.
 
-## [Unreleased]
+## [0.1.0] - 2026-11-22
 
 - `GET /foo` replies `{"message":"bar"}` and `GET /healthz` answers liveness
-  checks; errors are the standard 404/405/500 status, with no body.
+  checks; errors are the standard 404/405/500 status with `net/http`'s
+  plain-text body, never JSON.
 - Configuration by flag or `FOO_*` environment variable: host, port, log
-  level, log format (text or JSON) and shutdown timeout.
+  level, log format (text or JSON) and shutdown timeout. A host with a port
+  (`localhost:8080`) or in brackets (`[::1]`) is a usage error (exit 2), and
+  invalid flags are reported next to unexpected arguments.
+- Graceful shutdown on SIGINT or SIGTERM; a second signal stops a hanging
+  shutdown.
+- Handler panics and accept errors from `net/http` are logged at error level,
+  so `-log-level=warn` or `error` never hides them.
 - `Fooer` interface, its real implementation (`foo.New()`) and mockery mocks
   in `mocks/`.
 - Tests with testify, run through gotestsum: unit (mocked), component,
   integration (`make test-integration`, build tag `integration`) and
-  functional (hurl, `make test-functional`).
+  functional (hurl, `make test-functional`, which builds `bin/foo` first and
+  works whatever `FOO_LOG_LEVEL` is).
 - Benchmarks for people to read and compare: `make bench`,
   `make bench-compare` and `make bench-profile`; CI never runs them.
 - Makefile: `make task` before committing, `make ci` for the read-only checks
-  GitHub CI runs; golangci-lint (61 linters, gofumpt, gci) is installed by
+  GitHub CI runs; golangci-lint (64 linters, gofumpt, gci) is installed by
   each developer (`make check-tools`); mockery, gotestsum and benchstat are
   pinned in `go.mod` as tools. Also `make build-debug` and `make vendor`.
-- Distroless Docker image.
+- Distroless Docker image; `.dockerignore` keeps `.env*`, `.claude` and local
+  notes out of the build context.
 - GitHub CI on Go 1.27: lint, tests with coverage on Codecov, stale-mock
   check, govulncheck, and hurl against the binary and the container.
 - Branches: `devel` (default) and protected, release-only `main`.
 - README badges, a wiki, and `AGENTS.md` for AI coding agents.
-- Fix: handler panics and accept errors from `net/http` are logged at error
-  level, so `-log-level=warn` or `error` no longer hides them.
-- Fix: a second SIGINT or SIGTERM during graceful shutdown stops the process.
-- Fix: a host with a port (`localhost:8080`) or in brackets (`[::1]`) is a
-  usage error (exit 2), and invalid flags are reported next to unexpected
-  arguments.
-- Fix: `make test-functional` works whatever `FOO_LOG_LEVEL` is, and builds
-  `bin/foo` as a prerequisite instead of running make from its recipe.
-- `.dockerignore` keeps `.env*`, `.claude` and local notes out of the build
-  context.
-- Correction to the first bullets: 404/405/500 errors carry `net/http`'s
-  plain-text body, not JSON (rather than no body), and golangci-lint runs 64
-  linters, not 61.
+
+## [Unreleased]
