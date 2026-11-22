@@ -38,6 +38,13 @@ jobs:
       - name: The lite lint profile is a subset of full, and passes
         run: make lint-profiles
 
+      # vacuum, at the version pinned in the Makefile (VACUUM_VERSION).
+      - name: Install vacuum
+        run: make install-tools TOOLS=vacuum
+
+      - name: OpenAPI spec (vacuum)
+        run: make openapi-lint
+
       - name: go.mod and go.sum are tidy and verified
         run: make mod-check
 

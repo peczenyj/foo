@@ -27,6 +27,7 @@ const (
 // (with an Allow header) for a known path with another method.
 type API struct {
 	mux    *http.ServeMux
+	routes []string // the patterns registered on mux, in order (see handle)
 	fooer  foo.Fooer
 	logger *slog.Logger
 }
@@ -44,14 +45,22 @@ func New(f foo.Fooer, logger *slog.Logger) *API {
 
 	a := &API{mux: http.NewServeMux(), fooer: f, logger: logger}
 
-	a.mux.HandleFunc("GET /healthz", a.handleHealthz)
-	a.mux.HandleFunc("GET /foo", a.handleFoo)
+	a.handle("GET /healthz", a.handleHealthz)
+	a.handle("GET /foo", a.handleFoo)
 
 	return a
 }
 
 // ServeHTTP implements http.Handler.
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) { a.mux.ServeHTTP(w, r) }
+
+// handle registers h for pattern and records the pattern: the contract test
+// requires the recorded routes and the operations in api/openapi.yaml to be
+// the same set. Register every route through it.
+func (a *API) handle(pattern string, h http.HandlerFunc) {
+	a.mux.HandleFunc(pattern, h)
+	a.routes = append(a.routes, pattern)
+}
 
 func (a *API) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
