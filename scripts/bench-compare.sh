@@ -4,7 +4,8 @@
 #
 # Usage:  scripts/bench-compare.sh [base-ref]      (default: devel)
 # Env:    BENCH (benchmark filter, default .), BENCH_COUNT (runs, default 6;
-#         benchstat needs at least 6 for a confidence interval)
+#         benchstat needs at least 6 for a confidence interval), BENCHSTAT
+#         (the benchstat binary, default benchstat)
 #
 # The base ref is checked out in a temporary git worktree, so the working
 # tree is never touched. Results stay in bench-base.out and bench.out.
@@ -48,4 +49,4 @@ run . bench.out
 grep -q '^Benchmark' bench-base.out ||
   echo "warning: $base has no benchmarks matching '$bench': nothing to compare against" >&2
 
-go tool benchstat "$base=bench-base.out" "working-tree=bench.out"
+"${BENCHSTAT:-benchstat}" "$base=bench-base.out" "working-tree=bench.out"

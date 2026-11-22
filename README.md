@@ -61,7 +61,8 @@ invalid value is reported at startup, and the server exits with status 2.
   ci                All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
   generate          go generate ./... + regenerate mocks
   go-generate       go generate ./...
-  check-tools       Fail with install instructions if golangci-lint is missing
+  check-tools       Check every tool: missing → error with how to install it; other version → warning
+  install-tools     go install the pinned mockery, gotestsum and benchstat (TOOLS=gotestsum picks; needs network)
   build             Build the server binary into bin/
   build-debug       Build bin/foo-debug with debug symbols, no optimizations (for dlv)
   run               Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
@@ -92,13 +93,20 @@ check, the hurl suite (`make test-functional`) and a smoke test of the Docker
 image, which `make ci` leaves out.
 
 Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/docs/welcome/install/)
-v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker. The lint
-and format targets run `make check-tools` first: it stops with the install
-link if golangci-lint is missing, and warns if your version differs from
-CI's. [mockery](https://vektra.github.io/mockery/) and
-[gotestsum](https://github.com/gotestyourself/gotestsum) are pinned in
-`go.mod` as tools and run with `go tool`; nothing to install. Tests run
-through gotestsum: `make test GOTESTSUM_FORMAT=testname` lists every test.
+v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker, and three
+Go tools: [mockery](https://vektra.github.io/mockery/),
+[gotestsum](https://github.com/gotestyourself/gotestsum) and
+[benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat).
+`make install-tools` installs those three at the versions CI uses
+(`go install`, into `$(go env GOPATH)/bin`); golangci-lint has its own
+install page. Tools are installed binaries, not `go tool`s pinned in
+`go.mod`: they keep working offline and after `go clean -cache -modcache`,
+and they stay out of the service's dependencies. Each target checks the
+tools it runs first: a missing tool stops it with the install command, a
+different version only warns; `make check-tools` checks them all. Versions
+are pinned in the Makefile (`*_VERSION`) and bumped by hand there:
+Dependabot does not see them. Tests run through gotestsum:
+`make test GOTESTSUM_FORMAT=testname` lists every test.
 
 ### Tests
 
@@ -130,8 +138,7 @@ All Go tests use [testify](https://github.com/stretchr/testify).
 
 - `make bench` runs every benchmark `BENCH_COUNT` times (6) with `-benchmem`
   and summarises time, bytes and allocations per operation with
-  [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat) (a
-  `go tool`). A single run is noise; the `±` tells you how much to trust
+  [benchstat](https://pkg.go.dev/golang.org/x/perf/cmd/benchstat). A single run is noise; the `±` tells you how much to trust
   the number.
 - `make bench-compare` answers "did my change make it faster or slower?": it
   benchmarks `BASE` (default `devel`, checked out in a temporary git

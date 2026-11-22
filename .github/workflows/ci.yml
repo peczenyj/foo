@@ -54,6 +54,10 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      # Tools are installed binaries, at the versions pinned in the Makefile.
+      - name: Install gotestsum
+        run: make install-tools TOOLS=gotestsum
+
       - name: Vet
         run: go vet ./...
 
@@ -78,6 +82,9 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+
+      - name: Install mockery
+        run: make install-tools TOOLS=mockery
 
       - name: Regenerate mocks
         run: make mocks
