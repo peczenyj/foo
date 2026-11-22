@@ -10,6 +10,11 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+- Secrets from files: every secret can also be read from the file that
+  `<NAME>_FILE` names (the Docker and Kubernetes secrets convention), once at
+  startup and up to 64 KiB, keeping the value out of the process
+  environment. Both variables set, or a file that can't be read or is too
+  large, is a usage error (exit 2).
 - Secrets: `config.Secret` prints, logs and encodes as `REDACTED` (every
   `fmt` verb, `slog`, JSON), or `(unset)` without a value, and returns its
   value only through `Reveal()`; secrets are environment-only settings
