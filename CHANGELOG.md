@@ -10,6 +10,17 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+- Admin server (#4), off by default: `-admin-port`/`FOO_ADMIN_PORT` (`0`: any
+  free port) and `-admin-host`/`FOO_ADMIN_HOST` start a second HTTP server
+  with `GET /debug/vars` (expvar) and `/debug/pprof/*`, on its own mux and
+  port, with a 2-minute write timeout for profiles. It shuts down with the
+  public server; if either fails to start, both stop.
+- Request metrics in `/debug/vars`: `http_requests_total` and
+  `http_request_duration_seconds_total`, keyed by route pattern (or
+  `unmatched`) and status, recorded through the `metrics.Recorder` interface
+  (`internal/metrics`, expvar), so another backend can be added later.
+- The "closing server" log line names the address being closed.
+
 ## [0.5.0] - 2026-11-22
 
 - `-version` no longer hides invalid settings: an invalid flag or environment

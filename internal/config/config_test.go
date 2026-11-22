@@ -41,6 +41,8 @@ func TestParse_defaults(t *testing.T) {
 	assert.Equal(t, slog.LevelInfo, cfg.LogLevel)
 	assert.Equal(t, config.LogFormatText, cfg.LogFormat)
 	assert.Equal(t, 10*time.Second, cfg.ShutdownTimeout)
+	assert.False(t, cfg.AdminEnabled(), "the admin server is off unless a port is set")
+	assert.Equal(t, -1, cfg.AdminPort)
 	assert.Empty(t, output)
 }
 
@@ -108,6 +110,44 @@ func TestParse(t *testing.T) {
 			label: "should accept an IPv6 host with a zone",
 			env:   map[string]string{config.EnvHost: "fe80::1%eth0"},
 			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, "[fe80::1%eth0]:8080", cfg.Addr()) },
+		},
+		{
+			label: "should enable the admin server with -admin-port",
+			args:  []string{"-admin-port=9090"},
+			check: func(t *testing.T, cfg config.Config) {
+				assert.True(t, cfg.AdminEnabled())
+				assert.Equal(t, ":9090", cfg.AdminAddr())
+			},
+		},
+		{
+			label: "should enable the admin server on any free port with 0",
+			env:   map[string]string{config.EnvAdminPort: "0"},
+			check: func(t *testing.T, cfg config.Config) {
+				assert.True(t, cfg.AdminEnabled())
+				assert.Equal(t, ":0", cfg.AdminAddr())
+			},
+		},
+		{
+			label: "should let -admin-port=-1 turn off an admin port env var",
+			args:  []string{"-admin-port=-1"},
+			env:   map[string]string{config.EnvAdminPort: "9090"},
+			check: func(t *testing.T, cfg config.Config) { assert.False(t, cfg.AdminEnabled()) },
+		},
+		{
+			label: "should read the admin host, brackets stripped",
+			args:  []string{"-admin-port=9090"},
+			env:   map[string]string{config.EnvAdminHost: "[::1]"},
+			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, "[::1]:9090", cfg.AdminAddr()) },
+		},
+		{
+			label: "should strip the brackets of an admin host flag",
+			args:  []string{"-admin-host=[::1]", "-admin-port=9090"},
+			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, "::1", cfg.AdminHost) },
+		},
+		{
+			label: "should accept port 0 for both servers",
+			args:  []string{"-port=0", "-admin-port=0"},
+			check: func(t *testing.T, cfg config.Config) { assert.True(t, cfg.AdminEnabled()) },
 		},
 		{
 			label: "should strip the brackets of an IPv6 host flag",
@@ -221,6 +261,28 @@ func TestParse_errors(t *testing.T) {
 			label:  "should reject a numeric log level",
 			args:   []string{"-log-level=0"},
 			output: "must be debug, info, warn or error",
+		},
+		{label: "should reject an admin port below -1", args: []string{"-admin-port=-2"}, output: "admin port -2"},
+		{label: "should reject an admin port above 65535", args: []string{"-admin-port=65536"}, output: "admin port 65536"},
+		{
+			label:  "should reject an invalid admin port env var",
+			env:    map[string]string{config.EnvAdminPort: "abc"},
+			output: config.EnvAdminPort,
+		},
+		{
+			label:  "should reject the public port as the admin port",
+			args:   []string{"-port=9090", "-admin-port=9090"},
+			output: "admin port 9090: must differ from the port",
+		},
+		{
+			label:  "should reject an admin host with a port",
+			args:   []string{"-admin-host=localhost:1", "-admin-port=9090"},
+			output: `admin host "localhost:1"`,
+		},
+		{
+			label:  "should reject an admin host env var with a port",
+			env:    map[string]string{config.EnvAdminHost: "localhost:1"},
+			output: config.EnvAdminHost,
 		},
 		{
 			label:  "should report an invalid env var with -version",

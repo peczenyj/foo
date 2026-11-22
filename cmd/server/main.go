@@ -15,9 +15,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/peczenyj/foo/internal/admin"
 	"github.com/peczenyj/foo/internal/api"
 	"github.com/peczenyj/foo/internal/config"
 	"github.com/peczenyj/foo/internal/foo"
+	"github.com/peczenyj/foo/internal/metrics"
 )
 
 const (
@@ -28,6 +30,10 @@ const (
 	defaultWriteTimeout      = 10 * time.Second
 	defaultIdleTimeout       = 120 * time.Second
 	defaultMaxHeaderBytes    = 16 << 10 // 16 KiB
+	// adminWriteTimeout bounds an admin response. pprof refuses a CPU profile
+	// or trace whose ?seconds= reaches the server's write timeout, so the
+	// public 10s would forbid the default 30s profile.
+	adminWriteTimeout = 2 * time.Minute
 )
 
 // Set at build time with -ldflags "-X main.version=... -X main.revision=...".
@@ -82,7 +88,9 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	// signal behaviour: a second SIGINT or SIGTERM kills a shutdown that hangs.
 	context.AfterFunc(ctx, cancel)
 
-	if err := RunServer(ctx, cfg, api.New(foo.New(), logger), logger); err != nil {
+	handler := api.New(foo.New(), logger, api.WithRecorder(metrics.Expvar()))
+
+	if err := serveAll(ctx, cfg, handler, logger); err != nil {
 		logger.Error("server finished with error", slog.Any("error", err))
 
 		return exitError
@@ -91,13 +99,81 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	return exitOK
 }
 
-var errServerStopped = errors.New("server stopped")
+var (
+	errServerStopped = errors.New("server stopped")
+	errOtherFailed   = errors.New("the other server failed")
+)
+
+// serveAll runs the public server and, when cfg enables it, the admin server
+// (package admin), until ctx is cancelled or one of them fails: then the
+// other shuts down too, so the service never runs half-up. It returns the
+// servers' errors, joined.
+func serveAll(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
+	servers := []func(context.Context) error{
+		func(ctx context.Context) error { return RunServer(ctx, cfg, handler, logger) },
+	}
+
+	if cfg.AdminEnabled() {
+		servers = append(servers, func(ctx context.Context) error {
+			return RunAdminServer(ctx, cfg, admin.New(), logger)
+		})
+	}
+
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errServerStopped)
+
+	errs := make(chan error, len(servers))
+
+	for _, serve := range servers {
+		go func() {
+			err := serve(ctx)
+			if err != nil {
+				cancel(errOtherFailed)
+			}
+
+			errs <- err
+		}()
+	}
+
+	all := make([]error, 0, len(servers))
+
+	for range servers {
+		all = append(all, <-errs)
+	}
+
+	return errors.Join(all...)
+}
 
 // RunServer serves handler on cfg.Addr() until ctx is cancelled, then shuts
 // down gracefully within cfg.ShutdownTimeout. It logs the bound address,
 // which differs from cfg.Addr() when the port is 0.
 func RunServer(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Addr())
+	return serve(ctx, "listening", cfg.Addr(), newHTTPServer(handler, logger), cfg.ShutdownTimeout, logger)
+}
+
+// RunAdminServer serves the admin handler on cfg.AdminAddr(), as RunServer
+// does, with the admin server's timeouts. It logs "admin listening".
+func RunAdminServer(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
+	server := newHTTPServer(handler, logger)
+	server.WriteTimeout = adminWriteTimeout
+
+	if err := serve(ctx, "admin listening", cfg.AdminAddr(), server, cfg.ShutdownTimeout, logger); err != nil {
+		return fmt.Errorf("admin server: %w", err)
+	}
+
+	return nil
+}
+
+// serve listens on addr and serves server until ctx is cancelled, then shuts
+// it down gracefully within timeout. It logs msg with the bound address.
+func serve(
+	ctx context.Context,
+	msg, addr string,
+	server *http.Server,
+	timeout time.Duration,
+	logger *slog.Logger,
+) error {
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
@@ -105,13 +181,13 @@ func RunServer(ctx context.Context, cfg config.Config, handler http.Handler, log
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(errServerStopped)
 
-	server := newHTTPServer(handler, logger)
-
 	done := make(chan error, 1)
 
-	go prepareServerShutdown(ctx, server, cfg.ShutdownTimeout, logger, done)
+	bound := listener.Addr().String()
 
-	logger.Info("listening", slog.String("addr", listener.Addr().String()))
+	go prepareServerShutdown(ctx, server, timeout, logger.With(slog.String("addr", bound)), done)
+
+	logger.Info(msg, slog.String("addr", bound))
 
 	// Serve closes the listener, and returns immediately during graceful shutdown.
 	if err := server.Serve(listener); !errors.Is(err, http.ErrServerClosed) {

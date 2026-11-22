@@ -29,6 +29,7 @@ SHARED=(
   go.sum
   cmd/server/main.go
   cmd/server/main_test.go
+  cmd/server/admin_test.go
   internal/config/config.go
   internal/config/config_test.go
   internal/config/export_test.go
@@ -36,6 +37,11 @@ SHARED=(
   internal/config/secret_test.go
   internal/foo/foo.go
   internal/foo/foo_test.go
+  internal/admin/admin.go
+  internal/admin/admin_test.go
+  internal/metrics/metrics.go
+  internal/metrics/metrics_test.go
+  internal/metrics/export_test.go
   internal/api/handler.go
   internal/api/problem.go
   internal/api/helpers_test.go
