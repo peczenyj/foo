@@ -15,6 +15,7 @@ COPY . .
 
 ARG VERSION=dev
 ARG REVISION=unknown
+ARG NAME=foo
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -24,7 +25,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
       -trimpath \
       -ldflags "-s -w -X main.version=${VERSION} -X main.revision=${REVISION}" \
-      -o /out/foo \
+      -o /out/${NAME} \
       ./cmd/server
 
 # ---- runtime stage ----------------------------------------------------------
@@ -34,18 +35,24 @@ FROM gcr.io/distroless/static-debian12:nonroot
 ARG VERSION=dev
 ARG REVISION=unknown
 ARG CREATED
-LABEL org.opencontainers.image.title="foo" \
+# The project name and repository: make docker passes NAME and SOURCE from the
+# Makefile; these defaults serve a plain docker build.
+ARG NAME=foo
+ARG SOURCE=https://github.com/peczenyj/foo
+LABEL org.opencontainers.image.title="${NAME}" \
       org.opencontainers.image.description="Example Go HTTP service: GET /foo replies bar" \
-      org.opencontainers.image.source="https://github.com/peczenyj/foo" \
-      org.opencontainers.image.documentation="https://github.com/peczenyj/foo/wiki" \
+      org.opencontainers.image.source="${SOURCE}" \
+      org.opencontainers.image.documentation="${SOURCE}/wiki" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.created="${CREATED}"
 
-COPY --from=build /out/foo /foo
+# A fixed path: an exec-form ENTRYPOINT cannot expand ARGs, and distroless
+# has no shell to do it.
+COPY --from=build /out/${NAME} /server
 
 USER nonroot:nonroot
 EXPOSE 8080
 
-ENTRYPOINT ["/foo"]
+ENTRYPOINT ["/server"]

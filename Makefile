@@ -30,8 +30,16 @@ LINT_CONFIG    = $(if $(filter lite,$(LINT_PROFILE)),.golangci.lite.yml,.golangc
 ifeq ($(filter full lite,$(LINT_PROFILE)),)
 $(error LINT_PROFILE must be full or lite, not "$(LINT_PROFILE)")
 endif
-BIN           := bin/foo
-DEBUG_BIN     := bin/foo-debug
+# The project name and module path: every other name derives from them
+# (binaries, image tag, labels, coverage filter). make rename changes NAME.
+NAME          ?= foo
+MODULE        := $(shell awk '/^module / { print $$2; exit }' go.mod)
+# The image's org.opencontainers.image.source label.
+SOURCE        ?= https://$(MODULE)
+BIN           := bin/$(NAME)
+DEBUG_BIN     := bin/$(NAME)-debug
+# Scripts run from recipes (scripts/hurl.sh) find the binary here.
+export BIN
 VERSION       ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 REVISION      ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 VERSION_FLAGS := -X main.version=$(VERSION) -X main.revision=$(REVISION)
@@ -50,7 +58,7 @@ BENCH_PKG     ?= ./internal/api
 # bench-compare: the git ref to compare the working tree against.
 BASE          ?= devel
 # Coverage is measured on our code only: generated mocks are left out.
-COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^github.com/peczenyj/foo/mocks/')
+COVER_PKGS     = $(shell $(GO) list ./... | grep -v '^$(MODULE)/mocks/')
 
 .DEFAULT_GOAL := help
 # Workflow targets (task, ci, generate) chain their steps as prerequisites,
@@ -92,10 +100,10 @@ install-tools: ## go install the pinned mockery, gotestsum and benchstat (TOOLS=
 	$(if $(filter gotestsum,$(TOOLS)),$(GO) install $(GOTESTSUM_PKG)@$(GOTESTSUM_VERSION))
 	$(if $(filter benchstat,$(TOOLS)),$(GO) install $(BENCHSTAT_PKG)@$(BENCHSTAT_VERSION))
 
-build: ## Build the server binary into bin/
+build: ## Build the server binary, bin/<NAME>
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/server
 
-build-debug: ## Build bin/foo-debug with debug symbols, no optimizations (for dlv)
+build-debug: ## Build bin/<NAME>-debug with debug symbols, no optimizations (for dlv)
 	CGO_ENABLED=0 $(GO) build -gcflags='all=-N -l' -ldflags "$(VERSION_FLAGS)" -o $(DEBUG_BIN) ./cmd/server
 
 run: ## Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
@@ -142,7 +150,7 @@ mod-check: ## Fail if go.mod/go.sum need tidying (read-only), then verify
 	$(GO) mod tidy -diff
 	$(GO) mod verify
 
-test-functional: build ## Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
+test-functional: build ## Functional tests: the hurl suite against a fresh bin/<NAME> (needs hurl)
 	scripts/hurl.sh
 
 test-integration: check-gotestsum ## Integration tests (TestIntegration_*, build tag integration; may need Docker)
@@ -158,7 +166,12 @@ vendor: ## go mod tidy + vendor + verify (vendor/ is git-ignored)
 	$(GO) mod tidy && $(GO) mod vendor && $(GO) mod verify
 
 docker: ## Build the Docker image
-	docker build --build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) --build-arg CREATED=$$(date -u +%Y-%m-%dT%H:%M:%SZ) -t foo:$(VERSION) .
+	docker build --build-arg NAME=$(NAME) --build-arg SOURCE=$(SOURCE) \
+		--build-arg VERSION=$(VERSION) --build-arg REVISION=$(REVISION) \
+		--build-arg CREATED=$$(date -u +%Y-%m-%dT%H:%M:%SZ) -t $(NAME):$(VERSION) .
+
+print-%: # make print-BIN: print a variable (scripts ask make instead of repeating its values)
+	@echo '$($*)'
 
 clean: ## Remove build artefacts
 	rm -rf bin coverage.out bench.out bench-base.out bench.test cpu.out mem.out

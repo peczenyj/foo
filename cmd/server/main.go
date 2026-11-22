@@ -1,4 +1,4 @@
-// Command server runs the foo HTTP service.
+// Command server runs the HTTP service.
 package main
 
 import (

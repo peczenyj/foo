@@ -63,8 +63,8 @@ invalid value is reported at startup, and the server exits with status 2.
   go-generate       go generate ./...
   check-tools       Check every tool: missing → error with how to install it; other version → warning
   install-tools     go install the pinned mockery, gotestsum and benchstat (TOOLS=gotestsum picks; needs network)
-  build             Build the server binary into bin/
-  build-debug       Build bin/foo-debug with debug symbols, no optimizations (for dlv)
+  build             Build the server binary, bin/<NAME>
+  build-debug       Build bin/<NAME>-debug with debug symbols, no optimizations (for dlv)
   run               Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
   test              Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
   cover             Run tests with a coverage summary (mocks excluded)
@@ -77,7 +77,7 @@ invalid value is reported at startup, and the server exits with status 2.
   fmt               Format the code (gofumpt + gci)
   fmt-check         Fail if any file is not formatted
   mod-check         Fail if go.mod/go.sum need tidying (read-only), then verify
-  test-functional   Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
+  test-functional   Functional tests: the hurl suite against a fresh bin/<NAME> (needs hurl)
   test-integration  Integration tests (TestIntegration_*, build tag integration; may need Docker)
   mocks             Regenerate mocks/ with mockery (.mockery.yaml)
   tidy              go mod tidy + verify
@@ -108,6 +108,26 @@ different version only warns; `make check-tools` checks them all. Versions
 are pinned in the Makefile (`*_VERSION`) and bumped by hand there:
 Dependabot does not see them. Tests run through gotestsum:
 `make test GOTESTSUM_FORMAT=testname` lists every test.
+
+### Adapting the template
+
+The project's name and module path are written in a few places only;
+everything else derives from them:
+
+| Where | What |
+|-------|------|
+| `Makefile` | `NAME ?= foo`: binaries (`bin/$(NAME)`), image tag, image title |
+| `go.mod` | the module path: `MODULE`, the image source label (`SOURCE`), the coverage filter, gci's import grouping (`localmodule`) |
+| Go import paths, `.mockery.yaml` | the module path |
+| `cmd/server/main.go` | `programName`: usage and `-version` output |
+| `internal/config/config.go` | `envPrefix = "FOO_"`: every environment variable name |
+| `Dockerfile` | `ARG NAME` and `ARG SOURCE` defaults, for a plain `docker build` (`make docker` passes both) |
+| `README.md`, `AGENTS.md` | prose, badges and examples |
+
+The GitHub workflows read the repository from `${{ github.repository }}`
+and the name from `make print-NAME`; the image's entrypoint is a fixed
+`/server`. `make build NAME=widget` builds `bin/widget` without editing
+anything.
 
 ### Lint profiles
 

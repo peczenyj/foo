@@ -53,3 +53,8 @@ date, then open a new `## [Unreleased]` below it.
   (`.golangci.lite.yml`, correctness linters only), selected with
   `LINT_PROFILE`; `make lint-profiles`, in `make ci`, checks that lite stays
   a subset of full.
+- One project name: `NAME` in the Makefile and the module path in `go.mod`
+  drive the binary paths, the image tag and labels, the coverage filter and
+  gci's import grouping; environment variables share one `envPrefix`. The
+  image's entrypoint is now `/server` instead of `/foo`. The README lists
+  the few places that still name the project.
