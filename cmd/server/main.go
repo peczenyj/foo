@@ -78,6 +78,10 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// Once the first signal starts the graceful shutdown, restore the default
+	// signal behaviour: a second SIGINT or SIGTERM kills a shutdown that hangs.
+	context.AfterFunc(ctx, cancel)
+
 	if err := RunServer(ctx, cfg, api.New(foo.New(), logger), logger); err != nil {
 		logger.Error("server finished with error", slog.Any("error", err))
 
@@ -101,14 +105,7 @@ func RunServer(ctx context.Context, cfg config.Config, handler http.Handler, log
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(errServerStopped)
 
-	server := &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: defaultReadHeaderTimeout,
-		ReadTimeout:       defaultReadTimeout,
-		WriteTimeout:      defaultWriteTimeout,
-		IdleTimeout:       defaultIdleTimeout,
-		MaxHeaderBytes:    defaultMaxHeaderBytes,
-	}
+	server := newHTTPServer(handler, logger)
 
 	done := make(chan error, 1)
 
@@ -122,6 +119,21 @@ func RunServer(ctx context.Context, cfg config.Config, handler http.Handler, log
 	}
 
 	return <-done
+}
+
+// newHTTPServer returns the http.Server for handler. net/http reports handler
+// panics and accept errors through ErrorLog: they go to logger at error level,
+// so a log level above info never drops them.
+func newHTTPServer(handler http.Handler, logger *slog.Logger) *http.Server {
+	return &http.Server{
+		Handler:           handler,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
+		ReadTimeout:       defaultReadTimeout,
+		WriteTimeout:      defaultWriteTimeout,
+		IdleTimeout:       defaultIdleTimeout,
+		MaxHeaderBytes:    defaultMaxHeaderBytes,
+	}
 }
 
 func prepareServerShutdown(

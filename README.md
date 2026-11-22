@@ -49,38 +49,40 @@ invalid value is reported at startup, and the server exits with status 2.
 ## Development
 
 ```text
-  help         Show available targets
-  task         Before a commit: generate, tidy, fix, format, then run ci (edits files)
-  ci           All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
-  generate     go generate ./... + regenerate mocks
-  go-generate  go generate ./...
-  check-tools  Fail with install instructions if golangci-lint is missing
-  build        Build the server binary into bin/
-  build-debug  Build bin/foo-debug with debug symbols, no optimizations (for dlv)
-  run          Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
-  test         Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
-  cover        Run tests with a coverage summary (mocks excluded)
-  bench        Benchmarks (time, B/op, allocs/op) x BENCH_COUNT, summarised by benchstat into bench.out
-  bench-compare Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
-  bench-profile CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
-  lint         go vet + golangci-lint linters
-  lint-fix     go fix + golangci-lint --fix (edits files)
-  fmt          Format the code (gofumpt + gci)
-  fmt-check    Fail if any file is not formatted
-  mod-check    Fail if go.mod/go.sum need tidying (read-only), then verify
-  test-functional Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
-  test-integration Integration tests (TestIntegration_*, build tag integration; may need Docker)
-  mocks        Regenerate mocks/ with mockery (.mockery.yaml)
-  tidy         go mod tidy + verify
-  vendor       go mod tidy + vendor + verify (vendor/ is git-ignored)
-  docker       Build the Docker image
-  clean        Remove build artefacts
+  help              Show available targets
+  task              Before a commit: generate, tidy, fix, format, then run ci (edits files)
+  ci                All checks, read-only: mod-check, fmt-check, lint, cover (same as GitHub CI)
+  generate          go generate ./... + regenerate mocks
+  go-generate       go generate ./...
+  check-tools       Fail with install instructions if golangci-lint is missing
+  build             Build the server binary into bin/
+  build-debug       Build bin/foo-debug with debug symbols, no optimizations (for dlv)
+  run               Run the server locally (flags via ARGS, e.g. ARGS=-log-level=debug)
+  test              Run all tests with the race detector (gotestsum; GOTESTSUM_FORMAT=testname lists each test)
+  cover             Run tests with a coverage summary (mocks excluded)
+  bench             Benchmarks (time, B/op, allocs/op) x BENCH_COUNT into bench.out, summarised by benchstat
+  bench-compare     Benchmarks of BASE (default devel) vs the working tree, compared by benchstat
+  bench-profile     CPU and memory profiles of BENCH in BENCH_PKG, for go tool pprof
+  lint              go vet + golangci-lint linters
+  lint-fix          go fix + golangci-lint --fix (edits files)
+  fmt               Format the code (gofumpt + gci)
+  fmt-check         Fail if any file is not formatted
+  mod-check         Fail if go.mod/go.sum need tidying (read-only), then verify
+  test-functional   Functional tests: the hurl suite against a fresh bin/foo (needs hurl)
+  test-integration  Integration tests (TestIntegration_*, build tag integration; may need Docker)
+  mocks             Regenerate mocks/ with mockery (.mockery.yaml)
+  tidy              go mod tidy + verify
+  vendor            go mod tidy + vendor + verify (vendor/ is git-ignored)
+  docker            Build the Docker image
+  clean             Remove build artefacts
 ```
 
 Before committing, run `make task`: it regenerates code and mocks, tidies
 `go.mod`, applies `go fix` and the linters' fixes, formats, then runs
-`make ci`. `make ci` only checks (it never edits a file) and runs the same
-checks as GitHub CI, so a green `make task` means a green CI.
+`make ci`. `make ci` only checks (it never edits a file) and runs the checks
+of GitHub CI's lint and test jobs. CI also runs govulncheck, the stale-mock
+check, the hurl suite (`make test-functional`) and a smoke test of the Docker
+image, which `make ci` leaves out.
 
 Tools: Go 1.27 or later, [golangci-lint](https://golangci-lint.run/docs/welcome/install/)
 v2.15.0 (the version CI pins), [hurl](https://hurl.dev/), Docker. The lint

@@ -104,6 +104,11 @@ func TestParse(t *testing.T) {
 			args:  []string{"-host=::1"},
 			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, "[::1]:8080", cfg.Addr()) },
 		},
+		{
+			label: "should accept an IPv6 host with a zone",
+			env:   map[string]string{config.EnvHost: "fe80::1%eth0"},
+			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, "[fe80::1%eth0]:8080", cfg.Addr()) },
+		},
 	}
 
 	for _, tc := range testcases {
@@ -157,6 +162,18 @@ func TestParse_errors(t *testing.T) {
 		},
 		{label: "should reject a zero shutdown timeout", args: []string{"-shutdown-timeout=0s"}, output: "shutdown timeout"},
 		{label: "should reject extra arguments", args: []string{"foo"}, output: "unexpected arguments"},
+		{
+			label:  "should still validate the flags next to extra arguments",
+			args:   []string{"-port=70000", "foo"},
+			output: "port 70000",
+		},
+		{label: "should reject a host with a port", args: []string{"-host=localhost:80"}, output: `host "localhost:80"`},
+		{label: "should reject a bracketed IPv6 host", args: []string{"-host=[::1]"}, output: `host "[::1]"`},
+		{
+			label:  "should reject a FOO_HOST with a port",
+			env:    map[string]string{config.EnvHost: "localhost:80"},
+			output: config.EnvHost,
+		},
 	}
 
 	for _, tc := range testcases {
