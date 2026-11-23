@@ -3,11 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -126,23 +126,59 @@ func TestRun_fails_if_the_address_is_in_use(t *testing.T) {
 	// The cause, checked on every OS: the error text differs (Linux "address
 	// already in use", Windows "Only one usage of each socket address…"), and
 	// so does the errno (syscall.EADDRINUSE on Unix, WSAEADDRINUSE on Windows).
-	cfg := config.Default()
-	cfg.Host, cfg.Port = "127.0.0.1", mustAtoi(t, port)
-
-	err = RunServer(t.Context(), cfg, http.NotFoundHandler(), slog.New(slog.DiscardHandler))
+	_, err = listen(t.Context(), listener.Addr().String())
 
 	var opErr *net.OpError
 	require.ErrorAs(t, err, &opErr)
 	assert.Equal(t, "listen", opErr.Op)
 }
 
-func mustAtoi(t *testing.T, s string) int {
-	t.Helper()
+// When one server fails, runAll stops the others, so the service never runs
+// half-up, and returns the failure, named after its server if it has a name.
+func TestRunAll_stops_the_others_when_one_fails(t *testing.T) {
+	t.Parallel()
 
-	n, err := strconv.Atoi(s)
-	require.NoError(t, err)
+	boom := errors.New("boom")
 
-	return n
+	testcases := []struct {
+		label   string
+		failing string // the failing server's name
+		wantErr string
+	}{
+		{
+			label:   "should stop the admin server when the public one fails",
+			failing: "",
+			wantErr: "boom",
+		},
+		{
+			label:   "should stop the public server when the admin one fails",
+			failing: "admin server",
+			wantErr: "admin server: boom",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.label, func(t *testing.T) {
+			t.Parallel()
+
+			causes := make(chan error, 1)
+
+			waiting := namedServer{name: "other", run: func(ctx context.Context) error {
+				<-ctx.Done()
+
+				causes <- context.Cause(ctx)
+
+				return nil
+			}}
+			failing := namedServer{name: tc.failing, run: func(context.Context) error { return boom }}
+
+			err := runAll(t.Context(), waiting, failing)
+
+			require.ErrorIs(t, err, boom)
+			require.EqualError(t, err, tc.wantErr)
+			assert.ErrorIs(t, <-causes, errOtherFailed)
+		})
+	}
 }
 
 // net/http reports a handler panic through the server's ErrorLog: it must

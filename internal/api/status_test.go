@@ -17,6 +17,11 @@ import (
 	"github.com/peczenyj/foo/internal/api"
 )
 
+// onlyReader hides every method of its Reader but Read: io.Copy calls a
+// source's WriteTo before the destination's ReadFrom, and strings.Reader has
+// one.
+type onlyReader struct{ io.Reader }
+
 // The status recorded for a request is the one the client gets.
 func TestStatusWriter_records_the_status_sent(t *testing.T) {
 	t.Parallel()
@@ -68,10 +73,18 @@ func TestStatusWriter_records_the_status_sent(t *testing.T) {
 		{
 			label: "should keep 200 when WriteHeader follows a body copied with ReadFrom",
 			write: func(w http.ResponseWriter) {
-				_, _ = io.Copy(w, strings.NewReader("body"))
+				_, _ = io.Copy(w, onlyReader{strings.NewReader("body")})
 				w.WriteHeader(http.StatusInternalServerError)
 			},
 			want: http.StatusOK,
+		},
+		{
+			label: "should record the status written after an empty ReadFrom",
+			write: func(w http.ResponseWriter) {
+				_, _ = io.Copy(w, onlyReader{strings.NewReader("")})
+				w.WriteHeader(http.StatusNotFound)
+			},
+			want: http.StatusNotFound,
 		},
 		{
 			label: "should record 101 Switching Protocols as final",
@@ -216,21 +229,102 @@ func readLine(r io.Reader) (string, error) {
 }
 
 // A second WriteHeader is dropped, and logged with the handler that made it
-// (net/http would name statusWriter instead).
+// (net/http would name statusWriter instead), past net/http's own helpers
+// such as http.Error, as net/http does.
 func TestStatusWriter_logs_a_superfluous_WriteHeader_with_its_caller(t *testing.T) {
 	t.Parallel()
 
-	var logs bytes.Buffer
+	testcases := []struct {
+		label  string
+		second func(w http.ResponseWriter)
+	}{
+		{
+			label:  "should name the handler that called WriteHeader",
+			second: func(w http.ResponseWriter) { w.WriteHeader(http.StatusInternalServerError) },
+		},
+		{
+			label:  "should name the handler, not http.Error",
+			second: func(w http.ResponseWriter) { http.Error(w, "boom", http.StatusInternalServerError) },
+		},
+	}
 
-	recorder := httptest.NewRecorder()
-	w, status := api.NewStatusWriter(recorder, slog.New(slog.NewTextHandler(&logs, nil)))
+	for _, tc := range testcases {
+		t.Run(tc.label, func(t *testing.T) {
+			t.Parallel()
 
-	w.WriteHeader(http.StatusCreated)
-	w.WriteHeader(http.StatusInternalServerError)
+			var logs bytes.Buffer
 
-	assert.Equal(t, http.StatusCreated, status())
-	assert.Equal(t, http.StatusCreated, recorder.Code)
-	assert.Contains(t, logs.String(), `msg="superfluous WriteHeader call" status=500 sent=201`)
-	assert.Contains(t, logs.String(), "TestStatusWriter_logs_a_superfluous_WriteHeader_with_its_caller")
-	assert.Contains(t, logs.String(), "status_test.go:")
+			recorder := httptest.NewRecorder()
+			w, status := api.NewStatusWriter(recorder, slog.New(slog.NewTextHandler(&logs, nil)))
+
+			w.WriteHeader(http.StatusCreated)
+			tc.second(w)
+
+			assert.Equal(t, http.StatusCreated, status())
+			assert.Equal(t, http.StatusCreated, recorder.Code)
+			assert.Contains(t, logs.String(), `msg="superfluous WriteHeader call" status=500 sent=201`)
+			assert.Contains(t, logs.String(), "TestStatusWriter_logs_a_superfluous_WriteHeader_with_its_caller")
+			assert.Contains(t, logs.String(), "status_test.go:")
+			assert.NotContains(t, logs.String(), "net/http.")
+		})
+	}
+}
+
+// Through net/http's own writer, ReadFrom sends what Write would: the body
+// with an implicit 200, and nothing for an empty source, so a status written
+// next still reaches the client.
+func TestStatusWriter_ReadFrom_sends_what_Write_would(t *testing.T) {
+	t.Parallel()
+
+	testcases := []struct {
+		label      string
+		body       string
+		then       int // status written after the copy
+		wantStatus int
+	}{
+		{
+			label:      "should send the body with a 200",
+			body:       "body",
+			then:       http.StatusInternalServerError,
+			wantStatus: http.StatusOK,
+		},
+		{
+			label:      "should send the status written after an empty body",
+			body:       "",
+			then:       http.StatusNotFound,
+			wantStatus: http.StatusNotFound,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.label, func(t *testing.T) {
+			t.Parallel()
+
+			statuses := make(chan int, 1)
+
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+				w, status := api.NewStatusWriter(rw, slog.New(slog.DiscardHandler))
+
+				_, _ = io.Copy(w, onlyReader{strings.NewReader(tc.body)})
+				w.WriteHeader(tc.then)
+
+				statuses <- status()
+			}))
+			t.Cleanup(server.Close)
+
+			request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL, nil)
+			require.NoError(t, err)
+
+			response, err := server.Client().Do(request)
+			require.NoError(t, err)
+
+			body, err := io.ReadAll(response.Body)
+			require.NoError(t, err)
+			require.NoError(t, response.Body.Close())
+
+			assert.Equal(t, tc.wantStatus, response.StatusCode)
+			assert.Equal(t, tc.wantStatus, <-statuses, "recorded status")
+			assert.Equal(t, tc.body, string(body))
+		})
+	}
 }

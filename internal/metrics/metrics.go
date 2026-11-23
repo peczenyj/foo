@@ -22,12 +22,6 @@ type Recorder interface {
 // 404 and 405): never the raw path, which a client could vary without end.
 const Unmatched = "unmatched"
 
-// Nop records nothing.
-type Nop struct{}
-
-// ObserveRequest implements Recorder.
-func (Nop) ObserveRequest(string, int, time.Duration) {}
-
 // The expvar variables Expvar publishes, both keyed "<route> <status>"
 // (e.g. "GET /foo 200"): the request count, and the total of their
 // durations in seconds (total / count is the mean).

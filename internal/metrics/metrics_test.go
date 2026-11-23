@@ -11,15 +11,6 @@ import (
 	"github.com/peczenyj/foo/internal/metrics"
 )
 
-// The build fails if Nop stops being a Recorder.
-var _ metrics.Recorder = metrics.Nop{}
-
-func TestNop_records_nothing(t *testing.T) {
-	t.Parallel()
-
-	assert.NotPanics(t, func() { metrics.Nop{}.ObserveRequest("GET /foo", 200, time.Second) })
-}
-
 func TestExpvar_counts_and_sums_by_route_and_status(t *testing.T) {
 	t.Parallel()
 

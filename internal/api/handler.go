@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/peczenyj/foo/internal/foo"
@@ -185,15 +186,21 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 }
 
 // ReadFrom writes src as the body, as Write does, through the wrapped
-// writer's ReadFrom when it has one (net/http's uses sendfile).
-func (w *statusWriter) ReadFrom(src io.Reader) (int64, error) {
-	w.wroteHeader = true
-
+// writer's ReadFrom when it has one (net/http's uses sendfile). Like
+// net/http's, it sends the header only with the first byte: after an empty
+// src, a status can still be written.
+func (w *statusWriter) ReadFrom(src io.Reader) (n int64, err error) {
 	if rf, ok := w.ResponseWriter.(io.ReaderFrom); ok {
-		return rf.ReadFrom(src) //nolint:wrapcheck // a pass-through: the caller sees the writer's own error.
+		n, err = rf.ReadFrom(src)
+	} else {
+		n, err = io.Copy(w.ResponseWriter, src)
 	}
 
-	return io.Copy(w.ResponseWriter, src) //nolint:wrapcheck // a pass-through, as above.
+	if n > 0 {
+		w.wroteHeader = true
+	}
+
+	return n, err //nolint:wrapcheck // a pass-through: the caller sees the writer's own error.
 }
 
 // FlushError sends the header (as 200 if no status was written) and the
@@ -226,20 +233,27 @@ func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 // (deadlines, full duplex).
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-// callerOf returns "function (file:line)" of the caller skip frames above
-// its own caller, as net/http names the caller in its warnings.
+const (
+	// maxCallerDepth bounds the frames callerOf looks through for its caller.
+	maxCallerDepth = 16
+	// callerOfFrames are the frames runtime.Callers counts before callerOf's
+	// caller: runtime.Callers itself and callerOf.
+	callerOfFrames = 2
+)
+
+// callerOf returns "function (file:line)" of the caller skip frames above its
+// own caller, past net/http's own functions (http.Error, ServeContent…), as
+// net/http names the caller in its warnings.
 func callerOf(skip int) string {
-	pc, file, line, ok := runtime.Caller(skip + 1)
-	if !ok {
-		return "unknown"
-	}
+	pcs := make([]uintptr, maxCallerDepth)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(skip+callerOfFrames, pcs)])
 
-	name := "unknown"
-	if fn := runtime.FuncForPC(pc); fn != nil {
-		name = fn.Name()
+	for {
+		frame, more := frames.Next()
+		if !more || !strings.HasPrefix(frame.Function, "net/http.") {
+			return fmt.Sprintf("%s (%s:%d)", frame.Function, frame.File, frame.Line)
+		}
 	}
-
-	return fmt.Sprintf("%s (%s:%d)", name, file, line)
 }
 
 // handle registers h for pattern and records the pattern, so tests can list

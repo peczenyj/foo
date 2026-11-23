@@ -101,21 +101,17 @@ var (
 )
 
 // serveAll runs the public server and, when cfg enables it, the admin server
-// (package admin), until ctx is cancelled or one of them fails: then the
-// other shuts down too, so the service never runs half-up. Both addresses
-// are bound before either server starts: if one cannot listen, nothing is
-// served or logged as listening. It returns the servers' errors, joined.
+// (package admin), with runAll. Both addresses are bound before either server
+// starts: if one cannot listen, nothing is served or logged as listening.
 func serveAll(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
 	listener, err := listen(ctx, cfg.Addr())
 	if err != nil {
 		return err
 	}
 
-	servers := []func(context.Context) error{
-		func(ctx context.Context) error {
-			return serve(ctx, "listening", listener, newHTTPServer(handler, logger), cfg.ShutdownTimeout, logger)
-		},
-	}
+	servers := []namedServer{{run: func(ctx context.Context) error {
+		return serve(ctx, "listening", listener, newHTTPServer(handler, logger), cfg.ShutdownTimeout, logger)
+	}}}
 
 	if cfg.AdminEnabled {
 		adminListener, err := listen(ctx, cfg.AdminAddr())
@@ -125,27 +121,41 @@ func serveAll(ctx context.Context, cfg config.Config, handler http.Handler, logg
 			return fmt.Errorf("admin server: %w", err)
 		}
 
-		servers = append(servers, func(ctx context.Context) error {
+		servers = append(servers, namedServer{name: "admin server", run: func(ctx context.Context) error {
 			server := newAdminServer(ctx, admin.New(), logger)
 
-			if err := serve(ctx, "admin listening", adminListener, server, cfg.ShutdownTimeout, logger); err != nil {
-				return fmt.Errorf("admin server: %w", err)
-			}
-
-			return nil
-		})
+			return serve(ctx, "admin listening", adminListener, server, cfg.ShutdownTimeout, logger)
+		}})
 	}
 
+	return runAll(ctx, servers...)
+}
+
+// namedServer is a server runAll runs: run serves until its ctx is cancelled.
+type namedServer struct {
+	name string // prefixes its errors; empty for the public server
+	run  func(ctx context.Context) error
+}
+
+// runAll runs servers until ctx is cancelled or one of them fails: then it
+// cancels the others too (cause errOtherFailed), so the service never runs
+// half-up. It returns the servers' errors, each prefixed with its server's
+// name, joined.
+func runAll(ctx context.Context, servers ...namedServer) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(errServerStopped)
 
 	errs := make(chan error, len(servers))
 
-	for _, start := range servers {
+	for _, server := range servers {
 		go func() {
-			err := start(ctx)
+			err := server.run(ctx)
 			if err != nil {
 				cancel(errOtherFailed)
+
+				if server.name != "" {
+					err = fmt.Errorf("%s: %w", server.name, err)
+				}
 			}
 
 			errs <- err
@@ -159,18 +169,6 @@ func serveAll(ctx context.Context, cfg config.Config, handler http.Handler, logg
 	}
 
 	return errors.Join(all...)
-}
-
-// RunServer serves handler on cfg.Addr() until ctx is cancelled, then shuts
-// down gracefully within cfg.ShutdownTimeout. It logs the bound address,
-// which differs from cfg.Addr() when the port is 0.
-func RunServer(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
-	listener, err := listen(ctx, cfg.Addr())
-	if err != nil {
-		return err
-	}
-
-	return serve(ctx, "listening", listener, newHTTPServer(handler, logger), cfg.ShutdownTimeout, logger)
 }
 
 // newAdminServer returns the http.Server of the admin handler: the public
