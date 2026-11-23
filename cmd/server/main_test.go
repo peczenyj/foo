@@ -212,3 +212,16 @@ func TestNewHTTPServer_logs_handler_panics_at_error_level(t *testing.T) {
 	assert.Contains(t, logs.String(), "panic serving")
 	assert.Contains(t, logs.String(), "boom")
 }
+
+// The public handler serves the API through its middlewares.
+func TestNewHandler_serves_the_api(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+
+	newHandler(slog.New(slog.DiscardHandler)).
+		ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/foo", nil))
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.JSONEq(t, `{"message":"bar"}`, recorder.Body.String())
+}

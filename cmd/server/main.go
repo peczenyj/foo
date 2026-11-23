@@ -100,6 +100,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 func newHandler(logger *slog.Logger) http.Handler {
 	return middleware.Chain(api.New(foo.New(), logger),
 		middleware.Metrics(logger, metrics.Expvar()),
+		middleware.Recover(logger),
 	)
 }
 
