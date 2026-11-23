@@ -13,7 +13,7 @@ This file provides guidance to AI coding agents (Claude Code, Codex, Gemini CLI,
 
 ## Architecture
 
-`cmd/server/main.go` `run()` → `internal/config.Parse` (flags, with environment variables as defaults, `envPrefix` + setting; flag > env > default; every invalid value reported, exit 2) → `cfg.NewLogger` (slog text/json) → `api.New(foo.New(), logger)` → `RunServer` (listens first, logs the bound address, graceful shutdown on SIGINT/SIGTERM or ctx cancel).
+`cmd/server/main.go` `run()` → `internal/config.Parse` (flags, with environment variables as defaults, `envPrefix` + setting; flag > env > default; every invalid value reported, exit 2) → `cfg.NewLogger` (slog text/json) → `api.New(foo.New(), logger, api.WithRecorder(metrics.Expvar()))` → `serveAll`: `RunServer` (listens first, logs `"listening"` with the bound address, graceful shutdown on SIGINT/SIGTERM or ctx cancel) and, when `cfg.AdminEnabled()`, `RunAdminServer` (`admin.New()`, logs `"admin listening"`; its in-flight requests are cancelled at shutdown, so a running profile ends early); if either fails, the other shuts down too.
 
 - `internal/foo`: the `Fooer` interface (`Foo(ctx) (string, error)`) and the real implementation `*Bar`, built with `foo.New()` (a real implementation's dependencies become `New`'s parameters).
 - `internal/metrics` and `internal/admin`: request metrics (`metrics.Recorder`, published with expvar by `metrics.Expvar()`, once per process) and the admin server (`GET /debug/vars`, `/debug/pprof/*`), off unless `-admin-port` is set (`-1` off, `0` any free port).

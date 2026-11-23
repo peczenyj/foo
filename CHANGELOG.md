@@ -14,7 +14,8 @@ Released sections are never edited.
   free port) and `-admin-host`/`FOO_ADMIN_HOST` start a second HTTP server
   with `GET /debug/vars` (expvar) and `/debug/pprof/*`, on its own mux and
   port, with a 2-minute write timeout for profiles. It shuts down with the
-  public server; if either fails to start, both stop.
+  public server; if either fails to start, both stop. A shutdown ends a
+  running CPU profile or trace early instead of waiting out its `seconds`.
 - Request metrics in `/debug/vars`: `http_requests_total` and
   `http_request_duration_seconds_total`, keyed by route pattern (or
   `unmatched`) and status, recorded through the `metrics.Recorder` interface

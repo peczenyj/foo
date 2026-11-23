@@ -45,6 +45,8 @@ SHARED=(
   internal/api/handler.go
   internal/api/problem.go
   internal/api/helpers_test.go
+  internal/api/export_test.go
+  internal/api/status_test.go
   scripts/check-tool.sh
 )
 

@@ -76,7 +76,7 @@ func New(f foo.Fooer, logger *slog.Logger, opts ...Option) *API {
 // metrics.Unmatched for its 404 and 405: never the raw path.
 func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
-	sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	sw := newStatusWriter(w)
 
 	a.mux.ServeHTTP(sw, r)
 
@@ -88,8 +88,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.recorder.ObserveRequest(route, sw.status, time.Since(start))
 }
 
-// statusWriter keeps the status a handler writes (200 when it writes a body
-// without calling WriteHeader first).
+// statusWriter keeps the status the client gets: the first final (non-1xx)
+// status written, or 200 once a body is written without one; net/http drops
+// the later ones.
 type statusWriter struct {
 	http.ResponseWriter
 
@@ -97,12 +98,24 @@ type statusWriter struct {
 	wroteHeader bool
 }
 
+func newStatusWriter(w http.ResponseWriter) *statusWriter {
+	return &statusWriter{ResponseWriter: w, status: http.StatusOK}
+}
+
 func (w *statusWriter) WriteHeader(status int) {
-	if !w.wroteHeader {
+	// An informational status (103 Early Hints) precedes the final one.
+	if !w.wroteHeader && status >= http.StatusOK {
 		w.status, w.wroteHeader = status, true
 	}
 
 	w.ResponseWriter.WriteHeader(status)
+}
+
+// Write sends the header first, as 200, if no final status was written.
+func (w *statusWriter) Write(b []byte) (int, error) {
+	w.wroteHeader = true
+
+	return w.ResponseWriter.Write(b) //nolint:wrapcheck // a pass-through: the caller sees the writer's own error.
 }
 
 // Unwrap lets http.ResponseController reach the underlying writer (Flush,

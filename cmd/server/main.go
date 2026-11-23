@@ -153,9 +153,15 @@ func RunServer(ctx context.Context, cfg config.Config, handler http.Handler, log
 
 // RunAdminServer serves the admin handler on cfg.AdminAddr(), as RunServer
 // does, with the admin server's timeouts. It logs "admin listening".
+//
+// Unlike the public server, its in-flight requests are cancelled when ctx is:
+// a CPU profile or trace runs until its request context ends, so a shutdown
+// would otherwise wait out its ?seconds= (and time out). Cancelled, it ends
+// early and is still written.
 func RunAdminServer(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
 	server := newHTTPServer(handler, logger)
 	server.WriteTimeout = adminWriteTimeout
+	server.BaseContext = func(net.Listener) context.Context { return ctx }
 
 	if err := serve(ctx, "admin listening", cfg.AdminAddr(), server, cfg.ShutdownTimeout, logger); err != nil {
 		return fmt.Errorf("admin server: %w", err)

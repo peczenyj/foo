@@ -197,7 +197,9 @@ go tool pprof 'http://localhost:9090/debug/pprof/profile?seconds=30'
   `allocs`, `block`, `mutex`…).
 - Its own mux, never `http.DefaultServeMux`, and its own write timeout (2
   minutes, so CPU profiles and traces up to that length work); it shuts down
-  with the public server, and if either fails to start, both stop.
+  with the public server, and if either fails to start, both stop. A
+  shutdown ends a running CPU profile or trace early (it is still sent,
+  shorter) instead of waiting out its `seconds`.
 - It exposes heap contents and the command line: keep it off the public
   network (a Kubernetes container port with no Service, `kubectl
   port-forward`, or `-admin-host=127.0.0.1`).
