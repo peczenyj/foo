@@ -11,19 +11,7 @@ import (
 	"github.com/peczenyj/foo/internal/metrics"
 )
 
-// The build fails if an implementation stops being a Recorder.
-var (
-	_ metrics.Recorder = metrics.Nop{}
-	_ metrics.Recorder = (*metrics.ExpvarRecorder)(nil)
-)
-
-func TestNop_records_nothing(t *testing.T) {
-	t.Parallel()
-
-	assert.NotPanics(t, func() { metrics.Nop{}.ObserveRequest("GET /foo", 200, time.Second) })
-}
-
-func TestExpvarRecorder_counts_and_sums_by_route_and_status(t *testing.T) {
+func TestExpvar_counts_and_sums_by_route_and_status(t *testing.T) {
 	t.Parallel()
 
 	recorder := metrics.NewUnpublishedExpvar()
@@ -33,7 +21,7 @@ func TestExpvarRecorder_counts_and_sums_by_route_and_status(t *testing.T) {
 	recorder.ObserveRequest("GET /foo", 500, time.Second)
 	recorder.ObserveRequest(metrics.Unmatched, 404, time.Millisecond)
 
-	requests, seconds := recorder.Maps()
+	requests, seconds := metrics.ExpvarMaps(recorder)
 
 	assert.Equal(t, int64(2), intVar(t, requests, "GET /foo 200"))
 	assert.Equal(t, int64(1), intVar(t, requests, "GET /foo 500"))
@@ -51,7 +39,7 @@ func TestExpvar_is_published_once(t *testing.T) {
 	first := metrics.Expvar()
 	require.Same(t, first, metrics.Expvar())
 
-	requests, seconds := first.Maps()
+	requests, seconds := metrics.ExpvarMaps(first)
 
 	assert.Same(t, requests, expvar.Get(metrics.RequestsVar))
 	assert.Same(t, seconds, expvar.Get(metrics.RequestSecondsVar))

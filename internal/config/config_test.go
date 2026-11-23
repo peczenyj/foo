@@ -41,7 +41,9 @@ func TestParse_defaults(t *testing.T) {
 	assert.Equal(t, slog.LevelInfo, cfg.LogLevel)
 	assert.Equal(t, config.LogFormatText, cfg.LogFormat)
 	assert.Equal(t, 10*time.Second, cfg.ShutdownTimeout)
-	assert.False(t, cfg.AdminEnabled(), "the admin server is off unless a port is set")
+	assert.False(t, cfg.AdminEnabled, "the admin server is off unless a port is set")
+	assert.False(t, config.Config{}.AdminEnabled, "the zero Config never starts the admin server")
+	assert.Equal(t, "127.0.0.1", cfg.AdminHost)
 	assert.Equal(t, -1, cfg.AdminPort)
 	assert.Empty(t, output)
 }
@@ -112,26 +114,31 @@ func TestParse(t *testing.T) {
 			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, "[fe80::1%eth0]:8080", cfg.Addr()) },
 		},
 		{
-			label: "should enable the admin server with -admin-port",
+			label: "should enable the admin server with -admin-port, on the loopback interface",
 			args:  []string{"-admin-port=9090"},
 			check: func(t *testing.T, cfg config.Config) {
-				assert.True(t, cfg.AdminEnabled())
-				assert.Equal(t, ":9090", cfg.AdminAddr())
+				assert.True(t, cfg.AdminEnabled)
+				assert.Equal(t, "127.0.0.1:9090", cfg.AdminAddr())
 			},
 		},
 		{
 			label: "should enable the admin server on any free port with 0",
 			env:   map[string]string{config.EnvAdminPort: "0"},
 			check: func(t *testing.T, cfg config.Config) {
-				assert.True(t, cfg.AdminEnabled())
-				assert.Equal(t, ":0", cfg.AdminAddr())
+				assert.True(t, cfg.AdminEnabled)
+				assert.Equal(t, "127.0.0.1:0", cfg.AdminAddr())
 			},
+		},
+		{
+			label: "should serve the admin server on all interfaces with an empty -admin-host",
+			args:  []string{"-admin-host=", "-admin-port=9090"},
+			check: func(t *testing.T, cfg config.Config) { assert.Equal(t, ":9090", cfg.AdminAddr()) },
 		},
 		{
 			label: "should let -admin-port=-1 turn off an admin port env var",
 			args:  []string{"-admin-port=-1"},
 			env:   map[string]string{config.EnvAdminPort: "9090"},
-			check: func(t *testing.T, cfg config.Config) { assert.False(t, cfg.AdminEnabled()) },
+			check: func(t *testing.T, cfg config.Config) { assert.False(t, cfg.AdminEnabled) },
 		},
 		{
 			label: "should read the admin host, brackets stripped",
@@ -147,7 +154,7 @@ func TestParse(t *testing.T) {
 		{
 			label: "should accept port 0 for both servers",
 			args:  []string{"-port=0", "-admin-port=0"},
-			check: func(t *testing.T, cfg config.Config) { assert.True(t, cfg.AdminEnabled()) },
+			check: func(t *testing.T, cfg config.Config) { assert.True(t, cfg.AdminEnabled) },
 		},
 		{
 			label: "should strip the brackets of an IPv6 host flag",
@@ -312,6 +319,25 @@ func TestParse_errors(t *testing.T) {
 			assert.Contains(t, output, tc.output)
 		})
 	}
+}
+
+// A Kubernetes Service named foo or foo-admin sets FOO_PORT or
+// FOO_ADMIN_PORT to "tcp://<ip>:<port>" (a service link): the server warns
+// and starts with the defaults instead of stopping, even with a flag.
+func TestParse_ignores_Kubernetes_service_links(t *testing.T) {
+	t.Parallel()
+
+	cfg, output, err := parse(t, []string{"-admin-port=-1"}, map[string]string{
+		config.EnvPort:      "tcp://10.96.0.11:8080",
+		config.EnvAdminPort: "tcp://10.96.0.12:9090",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, ":8080", cfg.Addr())
+	assert.False(t, cfg.AdminEnabled)
+	assert.Contains(t, output, `ignoring `+config.EnvPort+`="tcp://10.96.0.11:8080": a Kubernetes service link`)
+	assert.Contains(t, output, `ignoring `+config.EnvAdminPort+`="tcp://10.96.0.12:9090"`)
+	assert.Contains(t, output, "enableServiceLinks: false")
 }
 
 func TestParse_help(t *testing.T) {

@@ -45,6 +45,9 @@ const (
 	// adminOff is the admin port that turns the admin server off, the default:
 	// 0 already means "any free port".
 	adminOff = -1
+	// defaultAdminHost keeps the admin server (heap contents, the command
+	// line) on the loopback interface unless another host is given.
+	defaultAdminHost = "127.0.0.1"
 )
 
 // ErrInvalid is returned, wrapped, for an invalid flag or environment value.
@@ -69,9 +72,12 @@ type Config struct {
 	LogFormat       string        // LogFormatText or LogFormatJSON
 	ShutdownTimeout time.Duration // grace period for in-flight requests
 	ShowVersion     bool          // print the version and exit
-	// The admin server (pprof, expvar), off unless AdminPort is set.
-	AdminHost string // admin listen host, never bracketed; empty means all interfaces
-	AdminPort int    // admin listen port; -1 (the default) turns it off, 0 means any free port
+	// The admin server (pprof, expvar) runs only when AdminEnabled is set:
+	// Parse sets it when an admin port other than -1 is given, so the zero
+	// Config never starts it.
+	AdminEnabled bool
+	AdminHost    string // admin listen host, never bracketed; 127.0.0.1 by default, empty means all interfaces
+	AdminPort    int    // admin listen port, 0 means any free port; -1 (the default) is Parse's "off"
 }
 
 // Default returns the built-in settings.
@@ -82,7 +88,8 @@ func Default() Config {
 		LogLevel:        slog.LevelInfo,
 		LogFormat:       LogFormatText,
 		ShutdownTimeout: defaultShutdownTimeout,
-		AdminHost:       "",
+		AdminEnabled:    false,
+		AdminHost:       defaultAdminHost,
 		AdminPort:       adminOff,
 	}
 }
@@ -91,9 +98,6 @@ func Default() Config {
 func (c Config) Addr() string {
 	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
 }
-
-// AdminEnabled reports whether the admin server runs: an admin port is set.
-func (c Config) AdminEnabled() bool { return c.AdminPort != adminOff }
 
 // AdminAddr returns the admin listen address, as Addr does.
 func (c Config) AdminAddr() string {
@@ -111,23 +115,15 @@ func (c Config) AdminAddr() string {
 func Parse(name string, args []string, getenv func(string) string, output io.Writer) (Config, error) {
 	cfg := Default()
 
+	getenv = ignoreServiceLinks(getenv, func(env, value string) {
+		fmt.Fprintf(output, "%s: ignoring %s=%q: a Kubernetes service link, not a port "+
+			"(set enableServiceLinks: false in the pod spec)\n", name, env, value)
+	})
+
 	envErrs := readEnv(&cfg, getenv)
 	envErr := errors.Join(envErrs...)
 
-	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	fs.SetOutput(output)
-
-	fs.StringVar(&cfg.Host, "host", cfg.Host, "listen host, empty for all interfaces (env "+EnvHost+")")
-	fs.IntVar(&cfg.Port, "port", cfg.Port, "listen port, 0 for any free port (env "+EnvPort+")")
-	fs.Var(levelFlag{&cfg.LogLevel}, "log-level", "minimum log level: debug, info, warn or error (env "+EnvLogLevel+")")
-	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "log format: text or json (env "+EnvLogFormat+")")
-	fs.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout,
-		"grace period for in-flight requests on shutdown (env "+EnvShutdownTimeout+")")
-	fs.StringVar(&cfg.AdminHost, "admin-host", cfg.AdminHost,
-		"admin server (pprof, expvar) listen host, empty for all interfaces (env "+EnvAdminHost+")")
-	fs.IntVar(&cfg.AdminPort, "admin-port", cfg.AdminPort,
-		"admin server (pprof, expvar) listen port: -1 turns it off, 0 for any free port (env "+EnvAdminPort+")")
-	fs.BoolVar(&cfg.ShowVersion, "version", false, "print the version and exit")
+	fs := newFlagSet(name, output, &cfg)
 
 	report := func(err error) error {
 		if err != nil {
@@ -152,6 +148,8 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 		err = cfg.validate()
 	}
 
+	cfg.AdminEnabled = cfg.AdminPort != adminOff
+
 	if cfg.ShowVersion {
 		envErr = errors.Join(ignoreMissingSecrets(envErrs)...)
 	}
@@ -170,6 +168,28 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 	}
 
 	return cfg, nil
+}
+
+// newFlagSet returns the flag set of Parse, writing to output, with cfg's
+// values (the built-in defaults, overridden by the environment) as the
+// defaults of the flags that set them.
+func newFlagSet(name string, output io.Writer, cfg *Config) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(output)
+
+	fs.StringVar(&cfg.Host, "host", cfg.Host, "listen host, empty for all interfaces (env "+EnvHost+")")
+	fs.IntVar(&cfg.Port, "port", cfg.Port, "listen port, 0 for any free port (env "+EnvPort+")")
+	fs.Var(levelFlag{&cfg.LogLevel}, "log-level", "minimum log level: debug, info, warn or error (env "+EnvLogLevel+")")
+	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "log format: text or json (env "+EnvLogFormat+")")
+	fs.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout,
+		"grace period for in-flight requests on shutdown (env "+EnvShutdownTimeout+")")
+	fs.StringVar(&cfg.AdminHost, "admin-host", cfg.AdminHost,
+		"admin server (pprof, expvar) listen host, empty for all interfaces (env "+EnvAdminHost+")")
+	fs.IntVar(&cfg.AdminPort, "admin-port", cfg.AdminPort,
+		"admin server (pprof, expvar) listen port: -1 turns it off, 0 for any free port (env "+EnvAdminPort+")")
+	fs.BoolVar(&cfg.ShowVersion, "version", false, "print the version and exit")
+
+	return fs
 }
 
 // readEnv overrides the defaults in c with the environment variables that are
@@ -196,6 +216,37 @@ func readEnv(c *Config, getenv func(string) string) []error {
 	parse(EnvAdminPort, setIfValid(&c.AdminPort, checked(strconv.Atoi, checkAdminPort)))
 
 	return errs
+}
+
+// ignoreServiceLinks returns getenv without the Kubernetes service links in
+// EnvPort and EnvAdminPort: a Service named <name> sets <NAME>_PORT to
+// "tcp://<ip>:<port>" in every pod of its namespace (enableServiceLinks, on by
+// default), so the project's own Service would set EnvPort, and one named
+// <name>-admin EnvAdminPort. Such a value is never a port: it is reported to
+// warn and read as unset, instead of stopping the server.
+func ignoreServiceLinks(getenv func(string) string, warn func(env, value string)) func(string) string {
+	return func(env string) string {
+		v := getenv(env)
+		if (env == EnvPort || env == EnvAdminPort) && isServiceLink(v) {
+			warn(env, v)
+
+			return ""
+		}
+
+		return v
+	}
+}
+
+// isServiceLink reports whether v is a Kubernetes service link
+// ("tcp://10.96.0.12:9090"; udp and sctp for those Services).
+func isServiceLink(v string) bool {
+	for _, scheme := range []string{"tcp://", "udp://", "sctp://"} {
+		if strings.HasPrefix(v, scheme) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ignoreMissingSecrets returns errs without the errors of required secrets

@@ -10,16 +10,24 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+- Request bodies are capped at 1 MiB; a body over the cap closes the
+  connection after the response.
+- A Kubernetes service link in `FOO_PORT` (a Service named `foo`) is ignored
+  with a warning instead of stopping the server.
 - Admin server (#4), off by default: `-admin-port`/`FOO_ADMIN_PORT` (`0`: any
-  free port) and `-admin-host`/`FOO_ADMIN_HOST` start a second HTTP server
-  with `GET /debug/vars` (expvar) and `/debug/pprof/*`, on its own mux and
-  port, with a 2-minute write timeout for profiles. It shuts down with the
-  public server; if either fails to start, both stop. A shutdown ends a
-  running CPU profile or trace early instead of waiting out its `seconds`.
+  free port) and `-admin-host`/`FOO_ADMIN_HOST` (`127.0.0.1` by default)
+  start a second HTTP server with `GET /debug/vars` (expvar) and
+  `/debug/pprof/*`, on its own mux and port. Both addresses are bound before
+  either server starts; it shuts down with the public server, and if either
+  fails, both stop. A shutdown ends a running CPU profile or trace early
+  instead of waiting out its `seconds`.
 - Request metrics in `/debug/vars`: `http_requests_total` and
   `http_request_duration_seconds_total`, keyed by route pattern (or
   `unmatched`) and status, recorded through the `metrics.Recorder` interface
-  (`internal/metrics`, expvar), so another backend can be added later.
+  (`internal/metrics`, expvar); each `api.WithRecorder` adds a recorder, so
+  another backend can be added later. A panicking request is recorded as a
+  `500`, and streaming, connection hijacking (recorded as `101`) and
+  `sendfile` keep working behind the recorder.
 - The "closing server" log line names the address being closed.
 
 ## [0.5.0] - 2026-11-22
