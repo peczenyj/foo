@@ -1,4 +1,4 @@
-package api_test
+package middleware_test
 
 import (
 	"bytes"
@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/peczenyj/foo/internal/api"
+	"github.com/peczenyj/foo/internal/middleware"
 )
 
 // onlyReader hides every method of its Reader but Read: io.Copy calls a
@@ -108,7 +108,7 @@ func TestStatusWriter_records_the_status_sent(t *testing.T) {
 		t.Run(tc.label, func(t *testing.T) {
 			t.Parallel()
 
-			w, status := api.NewStatusWriter(httptest.NewRecorder(), slog.New(slog.DiscardHandler))
+			w, status := middleware.NewStatusWriter(httptest.NewRecorder(), slog.New(slog.DiscardHandler))
 
 			tc.write(w)
 
@@ -125,7 +125,7 @@ func TestStatusWriter_unwraps_for_ResponseController(t *testing.T) {
 	errs := make(chan error, 1)
 
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
-		w, _ := api.NewStatusWriter(rw, slog.New(slog.DiscardHandler))
+		w, _ := middleware.NewStatusWriter(rw, slog.New(slog.DiscardHandler))
 
 		errs <- http.NewResponseController(w).SetWriteDeadline(time.Now().Add(time.Minute))
 	}))
@@ -147,7 +147,7 @@ func TestStatusWriter_keeps_the_writer_interfaces(t *testing.T) {
 	t.Parallel()
 
 	recorder := httptest.NewRecorder()
-	w, status := api.NewStatusWriter(recorder, slog.New(slog.DiscardHandler))
+	w, status := middleware.NewStatusWriter(recorder, slog.New(slog.DiscardHandler))
 
 	flusher, ok := w.(http.Flusher)
 	require.True(t, ok, "not an http.Flusher")
@@ -170,7 +170,7 @@ func TestStatusWriter_records_a_hijacked_connection_as_101(t *testing.T) {
 	statuses := make(chan int, 1)
 
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
-		w, status := api.NewStatusWriter(rw, slog.New(slog.DiscardHandler))
+		w, status := middleware.NewStatusWriter(rw, slog.New(slog.DiscardHandler))
 
 		hijacker, ok := w.(http.Hijacker)
 		if !ok {
@@ -255,7 +255,7 @@ func TestStatusWriter_logs_a_superfluous_WriteHeader_with_its_caller(t *testing.
 			var logs bytes.Buffer
 
 			recorder := httptest.NewRecorder()
-			w, status := api.NewStatusWriter(recorder, slog.New(slog.NewTextHandler(&logs, nil)))
+			w, status := middleware.NewStatusWriter(recorder, slog.New(slog.NewTextHandler(&logs, nil)))
 
 			w.WriteHeader(http.StatusCreated)
 			tc.second(w)
@@ -303,7 +303,7 @@ func TestStatusWriter_ReadFrom_sends_what_Write_would(t *testing.T) {
 			statuses := make(chan int, 1)
 
 			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
-				w, status := api.NewStatusWriter(rw, slog.New(slog.DiscardHandler))
+				w, status := middleware.NewStatusWriter(rw, slog.New(slog.DiscardHandler))
 
 				_, _ = io.Copy(w, onlyReader{strings.NewReader(tc.body)})
 				w.WriteHeader(tc.then)
@@ -327,4 +327,15 @@ func TestStatusWriter_ReadFrom_sends_what_Write_would(t *testing.T) {
 			assert.Equal(t, tc.body, string(body))
 		})
 	}
+}
+
+// Metrics and Recover share one writer per request: wrap returns a
+// statusWriter as it is.
+func TestWrap_reuses_a_statusWriter(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	w, _ := middleware.NewStatusWriter(httptest.NewRecorder(), logger)
+
+	assert.Same(t, w, middleware.Wrap(w, logger))
 }

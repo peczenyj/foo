@@ -1,14 +1,10 @@
-package api_test
+package main
 
 import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/peczenyj/foo/internal/api"
-	"github.com/peczenyj/foo/internal/foo"
-	"github.com/peczenyj/foo/internal/metrics"
 )
 
 // discardWriter is a reusable http.ResponseWriter that drops the response.
@@ -26,19 +22,19 @@ func (w *discardWriter) WriteHeader(int)             {}
 func (w *discardWriter) reset() { clear(w.header) }
 
 // newGetFoo returns the handler and request of the GET /foo hot path as the
-// binary serves it: routing, the real Fooer, JSON encoding and the expvar
-// recorder, with logs discarded.
+// binary serves it (newHandler: the middlewares, routing, the real Fooer,
+// JSON encoding and the expvar recorder), with logs discarded.
 func newGetFoo(b *testing.B) (http.Handler, *http.Request) {
 	b.Helper()
 
-	handler := api.New(foo.New(), slog.New(slog.DiscardHandler), api.WithRecorder(metrics.Expvar()))
+	handler := newHandler(slog.New(slog.DiscardHandler))
 
 	return handler, httptest.NewRequestWithContext(b.Context(), http.MethodGet, "/foo", nil)
 }
 
-// BenchmarkAPI_GetFoo measures GET /foo. Run it with make bench, which
+// BenchmarkHandler_GetFoo measures GET /foo. Run it with make bench, which
 // repeats it and summarises time, bytes and allocations with benchstat.
-func BenchmarkAPI_GetFoo(b *testing.B) {
+func BenchmarkHandler_GetFoo(b *testing.B) {
 	handler, request := newGetFoo(b)
 	w := newDiscardWriter()
 

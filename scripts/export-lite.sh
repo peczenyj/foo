@@ -30,6 +30,7 @@ SHARED=(
   cmd/server/main.go
   cmd/server/main_test.go
   cmd/server/admin_test.go
+  cmd/server/bench_test.go
   internal/config/config.go
   internal/config/config_test.go
   internal/config/export_test.go
@@ -42,13 +43,19 @@ SHARED=(
   internal/metrics/metrics.go
   internal/metrics/metrics_test.go
   internal/metrics/export_test.go
+  internal/middleware/middleware.go
+  internal/middleware/status.go
+  internal/middleware/metrics.go
+  internal/middleware/export_test.go
+  internal/middleware/chain_test.go
+  internal/middleware/status_test.go
+  internal/middleware/metrics_test.go
   internal/problem/problem.go
   internal/problem/problem_test.go
   internal/api/handler.go
   internal/api/problem.go
   internal/api/helpers_test.go
   internal/api/export_test.go
-  internal/api/status_test.go
   scripts/check-tool.sh
 )
 
