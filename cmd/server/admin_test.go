@@ -59,6 +59,21 @@ func waitForAddr(t *testing.T, logs *syncBuffer, msg string) string {
 	return addr
 }
 
+// waitForExit returns run's exit code, failing the test if run does not
+// return within a few seconds.
+func waitForExit(t *testing.T, exit <-chan int, logs *syncBuffer) int {
+	t.Helper()
+
+	select {
+	case code := <-exit:
+		return code
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "run did not return", "stderr: %s", logs)
+
+		return 0
+	}
+}
+
 func get(t *testing.T, url string) (int, string) {
 	t.Helper()
 
@@ -129,42 +144,66 @@ func TestRun_serves_the_admin_server(t *testing.T) {
 
 	cancel()
 
-	select {
-	case code := <-exit:
-		assert.Equal(t, exitOK, code, "stderr: %s", stderr)
-	case <-time.After(5 * time.Second):
-		t.Fatalf("run did not return after cancel: %s", stderr)
-	}
+	assert.Equal(t, exitOK, waitForExit(t, exit, stderr), "stderr: %s", stderr)
 }
 
-// When the admin server cannot listen, run fails, and the public server it
-// had started shuts down instead of serving alone.
-func TestRun_fails_if_the_admin_address_is_in_use(t *testing.T) {
+// When either address is in use, run fails before serving anything: the
+// error names the server that could not listen, which also checks that each
+// server binds its own address (pprof never ends up on the public port).
+func TestRun_fails_if_an_address_is_in_use(t *testing.T) {
 	t.Parallel()
 
-	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = listener.Close() })
+	testcases := []struct {
+		label     string
+		args      func(busyPort string) []string
+		wantError string
+		dontWant  string
+	}{
+		{
+			label:     "should name the admin server when the admin port is in use",
+			args:      func(busy string) []string { return []string{"-port=0", "-admin-port=" + busy} },
+			wantError: `"error":"admin server: listen: `,
+		},
+		{
+			label:     "should not blame the admin server when the public port is in use",
+			args:      func(busy string) []string { return []string{"-port=" + busy, "-admin-port=0"} },
+			wantError: `"error":"listen: `,
+			dontWant:  "admin server",
+		},
+	}
 
-	_, port, err := net.SplitHostPort(listener.Addr().String())
-	require.NoError(t, err)
+	for _, tc := range testcases {
+		t.Run(tc.label, func(t *testing.T) {
+			t.Parallel()
 
-	var stdout bytes.Buffer
+			listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = listener.Close() })
 
-	stderr := &syncBuffer{}
-	args := []string{"-host=127.0.0.1", "-port=0", "-admin-host=127.0.0.1", "-admin-port=" + port, "-log-format=json"}
+			_, port, err := net.SplitHostPort(listener.Addr().String())
+			require.NoError(t, err)
 
-	exit := make(chan int, 1)
+			var stdout bytes.Buffer
 
-	go func() { exit <- run(context.Background(), args, env(nil), &stdout, stderr) }()
+			stderr := &syncBuffer{}
 
-	select {
-	case code := <-exit:
-		assert.Equal(t, exitError, code)
-		assert.Contains(t, stderr.String(), "admin")
-		assert.Contains(t, stderr.String(), "listen")
-	case <-time.After(5 * time.Second):
-		t.Fatalf("run did not return: %s", stderr)
+			args := append([]string{"-host=127.0.0.1", "-admin-host=127.0.0.1", "-log-format=json"}, tc.args(port)...)
+
+			exit := make(chan int, 1)
+
+			go func() { exit <- run(context.Background(), args, env(nil), &stdout, stderr) }()
+
+			assert.Equal(t, exitError, waitForExit(t, exit, stderr))
+
+			logs := stderr.String()
+			assert.Contains(t, logs, tc.wantError)
+			assert.NotContains(t, logs, `"msg":"listening"`, "nothing serves when an address is in use")
+			assert.NotContains(t, logs, `"msg":"admin listening"`, "nothing serves when an address is in use")
+
+			if tc.dontWant != "" {
+				assert.NotContains(t, logs, tc.dontWant)
+			}
+		})
 	}
 }
 
@@ -216,12 +255,7 @@ func TestRun_shutdown_ends_a_running_profile(t *testing.T) {
 
 	cancel()
 
-	select {
-	case code := <-exit:
-		assert.Equal(t, exitOK, code, "stderr: %s", stderr)
-	case <-time.After(5 * time.Second):
-		t.Fatalf("run did not return after cancel: %s", stderr)
-	}
+	assert.Equal(t, exitOK, waitForExit(t, exit, stderr), "stderr: %s", stderr)
 
 	r := <-profile
 	require.NoError(t, r.err)

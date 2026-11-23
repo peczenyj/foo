@@ -40,7 +40,8 @@ trap cleanup EXIT
 
 # Port 0: the kernel picks a free port; the server logs the one it bound.
 # -log-level=info: the "listening" line is an info log, whatever the env says.
-"$BIN" -host=127.0.0.1 -port=0 -log-format=json -log-level=info 2>"$log" &
+# -admin-port=-1: an exported FOO_ADMIN_PORT (busy, say) must not stop it.
+"$BIN" -host=127.0.0.1 -port=0 -admin-port=-1 -log-format=json -log-level=info 2>"$log" &
 pid=$!
 
 addr=""
@@ -53,4 +54,4 @@ done
 
 [[ -n "$addr" ]] || { echo "server did not start listening within 10s:" >&2; cat "$log" >&2; exit 1; }
 
-run_hurl "http://$addr"
+run_hurl "http://$addr" || { status=$?; echo "hurl failed; server log:" >&2; cat "$log" >&2; exit "$status"; }

@@ -1,5 +1,5 @@
 // Package metrics records the service's own metrics behind a small
-// interface, Recorder: expvar now (ExpvarRecorder, served by the admin
+// interface, Recorder: expvar now (Expvar, served by the admin
 // server on /debug/vars), another backend later (Prometheus, for example)
 // without touching the code that records them.
 package metrics
@@ -36,31 +36,33 @@ const (
 	RequestSecondsVar = "http_request_duration_seconds_total"
 )
 
-// ExpvarRecorder is a Recorder on two expvar maps (RequestsVar and
-// RequestSecondsVar).
-type ExpvarRecorder struct {
+// expvarRecorder is a Recorder on two expvar maps (RequestsVar and
+// RequestSecondsVar). It is unexported, and Expvar returns a Recorder, so
+// nothing outside the package can hold a nil or zero one, whose nil maps
+// would panic on every request instead of at startup.
+type expvarRecorder struct {
 	requests *expvar.Map
 	seconds  *expvar.Map
 }
 
 // ObserveRequest implements Recorder.
-func (r *ExpvarRecorder) ObserveRequest(route string, status int, duration time.Duration) {
+func (r *expvarRecorder) ObserveRequest(route string, status int, duration time.Duration) {
 	key := route + " " + strconv.Itoa(status)
 
 	r.requests.Add(key, 1)
 	r.seconds.AddFloat(key, duration.Seconds())
 }
 
-// newExpvarRecorder returns an ExpvarRecorder on maps that are not published.
-func newExpvarRecorder() *ExpvarRecorder {
-	return &ExpvarRecorder{requests: new(expvar.Map).Init(), seconds: new(expvar.Map).Init()}
+// newExpvarRecorder returns an expvarRecorder on maps that are not published.
+func newExpvarRecorder() *expvarRecorder {
+	return &expvarRecorder{requests: new(expvar.Map).Init(), seconds: new(expvar.Map).Init()}
 }
 
-// published is the process-wide ExpvarRecorder: expvar names are global, and
+// published is the process-wide expvarRecorder: expvar names are global, and
 // expvar.Publish panics on a name published twice.
 //
 //nolint:gochecknoglobals // expvar names are process-wide: published once.
-var published = sync.OnceValue(func() *ExpvarRecorder {
+var published = sync.OnceValue(func() *expvarRecorder {
 	r := newExpvarRecorder()
 
 	expvar.Publish(RequestsVar, r.requests)
@@ -69,6 +71,6 @@ var published = sync.OnceValue(func() *ExpvarRecorder {
 	return r
 })
 
-// Expvar returns the process-wide ExpvarRecorder, published as RequestsVar
+// Expvar returns the process-wide expvar Recorder, published as RequestsVar
 // and RequestSecondsVar on its first call; every call returns the same one.
-func Expvar() *ExpvarRecorder { return published() }
+func Expvar() Recorder { return published() }

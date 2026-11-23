@@ -38,7 +38,9 @@ only the typed error's own field, never `err.Error()`, so context that
 wrappers add on the way up stays in the logs. A handler that validates its
 own request input (query parameters, a body) answers directly with
 `a.writeProblem(w, http.StatusBadRequest, "<what is wrong>")`. Never call
-`http.Error` in a handler. The router's own
+`http.Error` in a handler. Request bodies are capped at 1 MiB
+(`maxRequestBodyBytes`): reading past it fails with `*http.MaxBytesError`,
+and the connection closes after the response. The router's own
 `404` and `405` keep `net/http`'s plain-text body: a catch-all route to turn
 them into problems would also turn every `405` into a `404`.
 
@@ -120,9 +122,15 @@ even with `-version` (which only skips the required secrets, below).
 | `-log-level` | `FOO_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`, in any case (nothing else: no `info+2`) |
 | `-log-format` | `FOO_LOG_FORMAT` | `text` | `text` or `json` |
 | `-shutdown-timeout` | `FOO_SHUTDOWN_TIMEOUT` | `10s` | grace period for in-flight requests |
-| `-admin-host` | `FOO_ADMIN_HOST` | empty | admin server listen host, as `-host` |
+| `-admin-host` | `FOO_ADMIN_HOST` | `127.0.0.1` | admin server listen host, as `-host`: loopback only unless set (`0.0.0.0`, `::`, or an empty `-admin-host=` for all interfaces) |
 | `-admin-port` | `FOO_ADMIN_PORT` | `-1` (off) | admin server port: `-1` off, `0` any free port; never the same as `-port` |
 | `-version` | | | print the version and exit |
+
+On Kubernetes, a Service named `foo` sets `FOO_PORT=tcp://<ip>:<port>` in
+every pod of its namespace, and one named `foo-admin` sets `FOO_ADMIN_PORT`
+([service links](https://kubernetes.io/docs/tutorials/services/connect-applications-service/#accessing-the-service),
+on by default). Such a value is never a port: the server warns and ignores
+it. Set `enableServiceLinks: false` in the pod spec to keep them out.
 
 ### Secrets
 
@@ -194,19 +202,30 @@ go tool pprof 'http://localhost:9090/debug/pprof/profile?seconds=30'
   404 and 405, never the raw path.
 - `/debug/pprof/` (`net/http/pprof`): the profile index, `cmdline`,
   `profile`, `symbol`, `trace`, and the named profiles (`heap`, `goroutine`,
-  `allocs`, `block`, `mutex`…).
-- Its own mux, never `http.DefaultServeMux`, and its own write timeout (2
-  minutes, so CPU profiles and traces up to that length work); it shuts down
-  with the public server, and if either fails to start, both stop. A
+  `allocs`, `block`, `mutex`…). `block` and `mutex` stay empty: the Go
+  runtime samples them only once the program calls
+  `runtime.SetBlockProfileRate` or `runtime.SetMutexProfileFraction`, which
+  this service doesn't (sampling has a cost); add the call to `main` while
+  you investigate contention.
+- Its own mux, never `http.DefaultServeMux`, and the public server's
+  timeouts: `net/http/pprof` extends the write deadline of a CPU profile or
+  trace by its `seconds`, so any length works. Both addresses are bound
+  before either server starts: if one cannot listen, nothing is served. It
+  shuts down with the public server, and if either fails, both stop. A
   shutdown ends a running CPU profile or trace early (it is still sent,
   shorter) instead of waiting out its `seconds`.
-- It exposes heap contents and the command line: keep it off the public
-  network (a Kubernetes container port with no Service, `kubectl
-  port-forward`, or `-admin-host=127.0.0.1`).
+- It exposes heap contents and the command line, so it listens on
+  `127.0.0.1` unless `-admin-host` says otherwise: on Kubernetes, reach it
+  with `kubectl port-forward pod/<pod> 9090`, which connects inside the pod.
+  Only widen it (`FOO_ADMIN_HOST=0.0.0.0`, for `docker run -p` or a
+  scraper) behind a NetworkPolicy or firewall: without one, every pod in
+  the cluster can reach every pod's ports, Service or not.
 - Room for Prometheus: request metrics go through the `metrics.Recorder`
-  interface (`internal/metrics`, implemented with expvar), and
-  `admin.Handle` registers more admin routes, so a `/metrics` endpoint can be
-  added next to `/debug/vars` without touching the handlers.
+  interface (`internal/metrics`, implemented with expvar), each
+  `api.WithRecorder` adds one (expvar keeps recording next to a new
+  backend), and `admin.Handle` registers more admin routes, so a `/metrics`
+  endpoint can be added next to `/debug/vars` without touching the handlers.
+  A request whose handler panics is recorded as a `500`.
 
 ## Development
 

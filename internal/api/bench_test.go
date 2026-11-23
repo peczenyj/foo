@@ -8,6 +8,7 @@ import (
 
 	"github.com/peczenyj/foo/internal/api"
 	"github.com/peczenyj/foo/internal/foo"
+	"github.com/peczenyj/foo/internal/metrics"
 )
 
 // discardWriter is a reusable http.ResponseWriter that drops the response.
@@ -24,12 +25,13 @@ func (w *discardWriter) WriteHeader(int)             {}
 // reset clears the headers set by the previous request.
 func (w *discardWriter) reset() { clear(w.header) }
 
-// newGetFoo returns the handler and request of the GET /foo hot path:
-// routing, the real Fooer and JSON encoding, with logs discarded.
+// newGetFoo returns the handler and request of the GET /foo hot path as the
+// binary serves it: routing, the real Fooer, JSON encoding and the expvar
+// recorder, with logs discarded.
 func newGetFoo(b *testing.B) (http.Handler, *http.Request) {
 	b.Helper()
 
-	handler := api.New(foo.New(), slog.New(slog.DiscardHandler))
+	handler := api.New(foo.New(), slog.New(slog.DiscardHandler), api.WithRecorder(metrics.Expvar()))
 
 	return handler, httptest.NewRequestWithContext(b.Context(), http.MethodGet, "/foo", nil)
 }

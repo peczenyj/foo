@@ -30,10 +30,6 @@ const (
 	defaultWriteTimeout      = 10 * time.Second
 	defaultIdleTimeout       = 120 * time.Second
 	defaultMaxHeaderBytes    = 16 << 10 // 16 KiB
-	// adminWriteTimeout bounds an admin response. pprof refuses a CPU profile
-	// or trace whose ?seconds= reaches the server's write timeout, so the
-	// public 10s would forbid the default 30s profile.
-	adminWriteTimeout = 2 * time.Minute
 )
 
 // Set at build time with -ldflags "-X main.version=... -X main.revision=...".
@@ -106,16 +102,37 @@ var (
 
 // serveAll runs the public server and, when cfg enables it, the admin server
 // (package admin), until ctx is cancelled or one of them fails: then the
-// other shuts down too, so the service never runs half-up. It returns the
-// servers' errors, joined.
+// other shuts down too, so the service never runs half-up. Both addresses
+// are bound before either server starts: if one cannot listen, nothing is
+// served or logged as listening. It returns the servers' errors, joined.
 func serveAll(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
-	servers := []func(context.Context) error{
-		func(ctx context.Context) error { return RunServer(ctx, cfg, handler, logger) },
+	listener, err := listen(ctx, cfg.Addr())
+	if err != nil {
+		return err
 	}
 
-	if cfg.AdminEnabled() {
+	servers := []func(context.Context) error{
+		func(ctx context.Context) error {
+			return serve(ctx, "listening", listener, newHTTPServer(handler, logger), cfg.ShutdownTimeout, logger)
+		},
+	}
+
+	if cfg.AdminEnabled {
+		adminListener, err := listen(ctx, cfg.AdminAddr())
+		if err != nil {
+			_ = listener.Close()
+
+			return fmt.Errorf("admin server: %w", err)
+		}
+
 		servers = append(servers, func(ctx context.Context) error {
-			return RunAdminServer(ctx, cfg, admin.New(), logger)
+			server := newAdminServer(ctx, admin.New(), logger)
+
+			if err := serve(ctx, "admin listening", adminListener, server, cfg.ShutdownTimeout, logger); err != nil {
+				return fmt.Errorf("admin server: %w", err)
+			}
+
+			return nil
 		})
 	}
 
@@ -124,9 +141,9 @@ func serveAll(ctx context.Context, cfg config.Config, handler http.Handler, logg
 
 	errs := make(chan error, len(servers))
 
-	for _, serve := range servers {
+	for _, start := range servers {
 		go func() {
-			err := serve(ctx)
+			err := start(ctx)
 			if err != nil {
 				cancel(errOtherFailed)
 			}
@@ -148,42 +165,49 @@ func serveAll(ctx context.Context, cfg config.Config, handler http.Handler, logg
 // down gracefully within cfg.ShutdownTimeout. It logs the bound address,
 // which differs from cfg.Addr() when the port is 0.
 func RunServer(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
-	return serve(ctx, "listening", cfg.Addr(), newHTTPServer(handler, logger), cfg.ShutdownTimeout, logger)
+	listener, err := listen(ctx, cfg.Addr())
+	if err != nil {
+		return err
+	}
+
+	return serve(ctx, "listening", listener, newHTTPServer(handler, logger), cfg.ShutdownTimeout, logger)
 }
 
-// RunAdminServer serves the admin handler on cfg.AdminAddr(), as RunServer
-// does, with the admin server's timeouts. It logs "admin listening".
+// newAdminServer returns the http.Server of the admin handler: the public
+// server's timeouts (pprof extends its own write deadline by ?seconds= for
+// CPU profiles and traces), and request contexts derived from ctx.
 //
 // Unlike the public server, its in-flight requests are cancelled when ctx is:
 // a CPU profile or trace runs until its request context ends, so a shutdown
 // would otherwise wait out its ?seconds= (and time out). Cancelled, it ends
 // early and is still written.
-func RunAdminServer(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
+func newAdminServer(ctx context.Context, handler http.Handler, logger *slog.Logger) *http.Server {
 	server := newHTTPServer(handler, logger)
-	server.WriteTimeout = adminWriteTimeout
 	server.BaseContext = func(net.Listener) context.Context { return ctx }
 
-	if err := serve(ctx, "admin listening", cfg.AdminAddr(), server, cfg.ShutdownTimeout, logger); err != nil {
-		return fmt.Errorf("admin server: %w", err)
-	}
-
-	return nil
+	return server
 }
 
-// serve listens on addr and serves server until ctx is cancelled, then shuts
-// it down gracefully within timeout. It logs msg with the bound address.
+// listen binds addr.
+func listen(ctx context.Context, addr string) (net.Listener, error) {
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("listen: %w", err)
+	}
+
+	return listener, nil
+}
+
+// serve serves server on listener until ctx is cancelled, then shuts it down
+// gracefully within timeout. It logs msg with the bound address.
 func serve(
 	ctx context.Context,
-	msg, addr string,
+	msg string,
+	listener net.Listener,
 	server *http.Server,
 	timeout time.Duration,
 	logger *slog.Logger,
 ) error {
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
-	if err != nil {
-		return fmt.Errorf("listen: %w", err)
-	}
-
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(errServerStopped)
 
