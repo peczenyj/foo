@@ -51,8 +51,12 @@ func New(f foo.Fooer, logger *slog.Logger) *API {
 	return a
 }
 
-// ServeHTTP implements http.Handler.
-func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) { a.mux.ServeHTTP(w, r) }
+// ServeHTTP implements http.Handler: it routes the request. Everything that
+// applies to every request (metrics, panic recovery, response headers) is a
+// middleware around the API (package middleware).
+func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	a.mux.ServeHTTP(w, r)
+}
 
 // handle registers h for pattern and records the pattern, so tests can list
 // the registered routes. Register every route through it.

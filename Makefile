@@ -75,7 +75,7 @@ TEST_RUNNER    = $(GOTESTSUM) --format $(GOTESTSUM_FORMAT) --
 # Profiles need a single package: BENCH_PKG.
 BENCH         ?= .
 BENCH_COUNT   ?= 6
-BENCH_PKG     ?= ./internal/api
+BENCH_PKG     ?= ./cmd/server
 # bench-compare: the git ref to compare the working tree against.
 BASE          ?= devel
 # Coverage is measured on our code only: generated mocks are left out.

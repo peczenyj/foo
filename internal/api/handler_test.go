@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/peczenyj/foo/internal/api"
 	"github.com/peczenyj/foo/internal/foo"
+	"github.com/peczenyj/foo/internal/problem"
 	foomock "github.com/peczenyj/foo/mocks/github.com/peczenyj/foo/foo"
 )
 
@@ -160,12 +162,12 @@ func TestAPI(t *testing.T) {
 				// Handler errors are RFC 9457 problem details.
 				assert.Equal(t, problemMediaType, headers.Get("Content-Type"))
 				assert.Equal(t, "nosniff", headers.Get("X-Content-Type-Options"))
-				assert.Equal(t, api.Problem{
+				assert.Equal(t, problem.Problem{
 					Type:   "about:blank",
 					Title:  http.StatusText(tc.status),
 					Status: tc.status,
 					Detail: tc.detail,
-				}, decodeJSON[api.Problem](t, body))
+				}, decodeJSON[problem.Problem](t, body))
 			case status >= http.StatusBadRequest:
 				// The router's 404 and 405 keep net/http's plain text.
 				assert.Equal(t, plainTextMediaType, headers.Get("Content-Type"))
@@ -200,4 +202,30 @@ func TestNew_panics_on_nil_Logger(t *testing.T) {
 	t.Parallel()
 
 	assert.PanicsWithValue(t, "api.New: nil Logger", func() { api.New(foomock.NewFooer(t), nil) })
+}
+
+// failingWriter is a ResponseWriter whose body writes fail, as on a
+// connection the client closed.
+type failingWriter struct{ header http.Header }
+
+func (w *failingWriter) Header() http.Header     { return w.header }
+func (*failingWriter) Write([]byte) (int, error) { return 0, errors.New("connection closed") }
+func (*failingWriter) WriteHeader(int)           {}
+
+// A problem response that cannot be sent is logged at warn level.
+func TestAPI_logs_a_problem_it_could_not_send(t *testing.T) {
+	t.Parallel()
+
+	fooer := foomock.NewFooer(t)
+	fooer.EXPECT().Foo(mock.Anything).Return("", errors.New("db down")).Once()
+
+	var logs bytes.Buffer
+
+	handler := api.New(fooer, slog.New(slog.NewTextHandler(&logs, nil)))
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/foo", nil)
+
+	handler.ServeHTTP(&failingWriter{header: make(http.Header)}, request)
+
+	assert.Contains(t, logs.String(), `level=WARN msg="unexpected error while encoding the problem response"`)
+	assert.Contains(t, logs.String(), "connection closed")
 }

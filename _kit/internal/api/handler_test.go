@@ -12,6 +12,7 @@ import (
 
 	"github.com/peczenyj/foo/internal/api"
 	"github.com/peczenyj/foo/internal/foo"
+	"github.com/peczenyj/foo/internal/problem"
 )
 
 const (
@@ -150,12 +151,12 @@ func TestAPI(t *testing.T) {
 				// Handler errors are RFC 9457 problem details.
 				assert.Equal(t, problemMediaType, headers.Get("Content-Type"))
 				assert.Equal(t, "nosniff", headers.Get("X-Content-Type-Options"))
-				assert.Equal(t, api.Problem{
+				assert.Equal(t, problem.Problem{
 					Type:   "about:blank",
 					Title:  http.StatusText(tc.status),
 					Status: tc.status,
 					Detail: tc.detail,
-				}, decodeJSON[api.Problem](t, body))
+				}, decodeJSON[problem.Problem](t, body))
 			case status >= http.StatusBadRequest:
 				// The router's 404 and 405 keep net/http's plain text.
 				assert.Equal(t, plainTextMediaType, headers.Get("Content-Type"))

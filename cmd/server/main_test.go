@@ -3,11 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -103,6 +103,7 @@ func TestRun_serves_until_cancelled(t *testing.T) {
 	assert.Contains(t, stderr.String(), `"msg":"listening"`)
 	assert.Contains(t, stderr.String(), `"addr":"127.0.0.1:`)
 	assert.NotContains(t, stderr.String(), `"addr":"127.0.0.1:0"`, "must log the bound port, not the requested one")
+	assert.NotContains(t, stderr.String(), "admin listening", "the admin server is off by default")
 }
 
 func TestRun_fails_if_the_address_is_in_use(t *testing.T) {
@@ -125,23 +126,59 @@ func TestRun_fails_if_the_address_is_in_use(t *testing.T) {
 	// The cause, checked on every OS: the error text differs (Linux "address
 	// already in use", Windows "Only one usage of each socket address…"), and
 	// so does the errno (syscall.EADDRINUSE on Unix, WSAEADDRINUSE on Windows).
-	cfg := config.Default()
-	cfg.Host, cfg.Port = "127.0.0.1", mustAtoi(t, port)
-
-	err = RunServer(t.Context(), cfg, http.NotFoundHandler(), slog.New(slog.DiscardHandler))
+	_, err = listen(t.Context(), listener.Addr().String())
 
 	var opErr *net.OpError
 	require.ErrorAs(t, err, &opErr)
 	assert.Equal(t, "listen", opErr.Op)
 }
 
-func mustAtoi(t *testing.T, s string) int {
-	t.Helper()
+// When one server fails, runAll stops the others, so the service never runs
+// half-up, and returns the failure, named after its server if it has a name.
+func TestRunAll_stops_the_others_when_one_fails(t *testing.T) {
+	t.Parallel()
 
-	n, err := strconv.Atoi(s)
-	require.NoError(t, err)
+	boom := errors.New("boom")
 
-	return n
+	testcases := []struct {
+		label   string
+		failing string // the failing server's name
+		wantErr string
+	}{
+		{
+			label:   "should stop the admin server when the public one fails",
+			failing: "",
+			wantErr: "boom",
+		},
+		{
+			label:   "should stop the public server when the admin one fails",
+			failing: "admin server",
+			wantErr: "admin server: boom",
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.label, func(t *testing.T) {
+			t.Parallel()
+
+			causes := make(chan error, 1)
+
+			waiting := namedServer{name: "other", run: func(ctx context.Context) error {
+				<-ctx.Done()
+
+				causes <- context.Cause(ctx)
+
+				return nil
+			}}
+			failing := namedServer{name: tc.failing, run: func(context.Context) error { return boom }}
+
+			err := runAll(t.Context(), waiting, failing)
+
+			require.ErrorIs(t, err, boom)
+			require.EqualError(t, err, tc.wantErr)
+			assert.ErrorIs(t, <-causes, errOtherFailed)
+		})
+	}
 }
 
 // net/http reports a handler panic through the server's ErrorLog: it must
@@ -174,4 +211,57 @@ func TestNewHTTPServer_logs_handler_panics_at_error_level(t *testing.T) {
 	assert.Contains(t, logs.String(), `"level":"ERROR"`)
 	assert.Contains(t, logs.String(), "panic serving")
 	assert.Contains(t, logs.String(), "boom")
+}
+
+// The public handler serves the API through its middlewares.
+func TestNewHandler_serves_the_api(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+
+	newHandler(slog.New(slog.DiscardHandler)).
+		ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/foo", nil))
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.JSONEq(t, `{"message":"bar"}`, recorder.Body.String())
+}
+
+// Every public response carries the security baseline, the router's own 404
+// and 405 included.
+func TestNewHandler_sets_the_security_headers(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]string{
+		"X-Content-Type-Options":  "nosniff",
+		"Cache-Control":           "no-store",
+		"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+		"X-Frame-Options":         "DENY",
+		"Referrer-Policy":         "no-referrer",
+	}
+
+	handler := newHandler(slog.New(slog.DiscardHandler))
+
+	requests := []struct {
+		method, target string
+		status         int
+	}{
+		{method: http.MethodGet, target: "/foo", status: http.StatusOK},
+		{method: http.MethodGet, target: "/missing", status: http.StatusNotFound},
+		{method: http.MethodPost, target: "/foo", status: http.StatusMethodNotAllowed},
+	}
+
+	for _, req := range requests {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), req.method, req.target, nil))
+
+		// The headers as sent: recorder.Header() would also show those set
+		// after the response was written.
+		response := recorder.Result()
+		require.NoError(t, response.Body.Close())
+		require.Equal(t, req.status, response.StatusCode, "%s %s", req.method, req.target)
+
+		for name, value := range want {
+			assert.Equal(t, value, response.Header.Get(name), "%s %s: %s", req.method, req.target, name)
+		}
+	}
 }

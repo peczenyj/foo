@@ -15,9 +15,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/peczenyj/foo/internal/admin"
 	"github.com/peczenyj/foo/internal/api"
 	"github.com/peczenyj/foo/internal/config"
 	"github.com/peczenyj/foo/internal/foo"
+	"github.com/peczenyj/foo/internal/metrics"
+	"github.com/peczenyj/foo/internal/middleware"
 )
 
 const (
@@ -82,7 +85,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	// signal behaviour: a second SIGINT or SIGTERM kills a shutdown that hangs.
 	context.AfterFunc(ctx, cancel)
 
-	if err := RunServer(ctx, cfg, api.New(foo.New(), logger), logger); err != nil {
+	if err := serveAll(ctx, cfg, newHandler(logger), logger); err != nil {
 		logger.Error("server finished with error", slog.Any("error", err))
 
 		return exitError
@@ -91,27 +94,151 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	return exitOK
 }
 
-var errServerStopped = errors.New("server stopped")
+// securityHeaders is the security baseline of every public response (the
+// OWASP REST Security Cheat Sheet's): edit it here. HSTS is left to the TLS
+// terminator, which knows whether the client came over HTTPS.
+//
+//nolint:gochecknoglobals // a fixed table, read by newHandler only.
+var securityHeaders = map[string]string{
+	"X-Content-Type-Options":  "nosniff",
+	"Cache-Control":           "no-store",
+	"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+	"X-Frame-Options":         "DENY",
+	"Referrer-Policy":         "no-referrer",
+}
 
-// RunServer serves handler on cfg.Addr() until ctx is cancelled, then shuts
-// down gracefully within cfg.ShutdownTimeout. It logs the bound address,
-// which differs from cfg.Addr() when the port is 0.
-func RunServer(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
-	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Addr())
+// newHandler returns the public server's handler: the API, which only
+// routes and answers, inside the middlewares that apply to every request,
+// outermost first.
+func newHandler(logger *slog.Logger) http.Handler {
+	return middleware.Chain(api.New(foo.New(), logger),
+		middleware.Headers(securityHeaders),
+		middleware.Metrics(logger, metrics.Expvar()),
+		middleware.Recover(logger),
+	)
+}
+
+var (
+	errServerStopped = errors.New("server stopped")
+	errOtherFailed   = errors.New("the other server failed")
+)
+
+// serveAll runs the public server and, when cfg enables it, the admin server
+// (package admin), with runAll. Both addresses are bound before either server
+// starts: if one cannot listen, nothing is served or logged as listening.
+func serveAll(ctx context.Context, cfg config.Config, handler http.Handler, logger *slog.Logger) error {
+	listener, err := listen(ctx, cfg.Addr())
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
+		return err
 	}
 
+	servers := []namedServer{{run: func(ctx context.Context) error {
+		return serve(ctx, "listening", listener, newHTTPServer(handler, logger), cfg.ShutdownTimeout, logger)
+	}}}
+
+	if cfg.AdminEnabled {
+		adminListener, err := listen(ctx, cfg.AdminAddr())
+		if err != nil {
+			_ = listener.Close()
+
+			return fmt.Errorf("admin server: %w", err)
+		}
+
+		servers = append(servers, namedServer{name: "admin server", run: func(ctx context.Context) error {
+			server := newAdminServer(ctx, admin.New(), logger)
+
+			return serve(ctx, "admin listening", adminListener, server, cfg.ShutdownTimeout, logger)
+		}})
+	}
+
+	return runAll(ctx, servers...)
+}
+
+// namedServer is a server runAll runs: run serves until its ctx is cancelled.
+type namedServer struct {
+	name string // prefixes its errors; empty for the public server
+	run  func(ctx context.Context) error
+}
+
+// runAll runs servers until ctx is cancelled or one of them fails: then it
+// cancels the others too (cause errOtherFailed), so the service never runs
+// half-up. It returns the servers' errors, each prefixed with its server's
+// name, joined.
+func runAll(ctx context.Context, servers ...namedServer) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(errServerStopped)
 
+	errs := make(chan error, len(servers))
+
+	for _, server := range servers {
+		go func() {
+			err := server.run(ctx)
+			if err != nil {
+				cancel(errOtherFailed)
+
+				if server.name != "" {
+					err = fmt.Errorf("%s: %w", server.name, err)
+				}
+			}
+
+			errs <- err
+		}()
+	}
+
+	all := make([]error, 0, len(servers))
+
+	for range servers {
+		all = append(all, <-errs)
+	}
+
+	return errors.Join(all...)
+}
+
+// newAdminServer returns the http.Server of the admin handler: the public
+// server's timeouts (pprof extends its own write deadline by ?seconds= for
+// CPU profiles and traces), and request contexts derived from ctx.
+//
+// Unlike the public server, its in-flight requests are cancelled when ctx is:
+// a CPU profile or trace runs until its request context ends, so a shutdown
+// would otherwise wait out its ?seconds= (and time out). Cancelled, it ends
+// early and is still written.
+func newAdminServer(ctx context.Context, handler http.Handler, logger *slog.Logger) *http.Server {
 	server := newHTTPServer(handler, logger)
+	server.BaseContext = func(net.Listener) context.Context { return ctx }
+
+	return server
+}
+
+// listen binds addr.
+func listen(ctx context.Context, addr string) (net.Listener, error) {
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("listen: %w", err)
+	}
+
+	return listener, nil
+}
+
+// serve serves server on listener until ctx is cancelled, then shuts it down
+// gracefully within timeout. It logs msg with the bound address.
+func serve(
+	ctx context.Context,
+	msg string,
+	listener net.Listener,
+	server *http.Server,
+	timeout time.Duration,
+	logger *slog.Logger,
+) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errServerStopped)
 
 	done := make(chan error, 1)
 
-	go prepareServerShutdown(ctx, server, cfg.ShutdownTimeout, logger, done)
+	bound := listener.Addr().String()
 
-	logger.Info("listening", slog.String("addr", listener.Addr().String()))
+	go prepareServerShutdown(ctx, server, timeout, logger.With(slog.String("addr", bound)), done)
+
+	logger.Info(msg, slog.String("addr", bound))
 
 	// Serve closes the listener, and returns immediately during graceful shutdown.
 	if err := server.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
