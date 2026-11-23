@@ -225,3 +225,28 @@ func TestNewHandler_serves_the_api(t *testing.T) {
 	assert.Equal(t, http.StatusOK, recorder.Code)
 	assert.JSONEq(t, `{"message":"bar"}`, recorder.Body.String())
 }
+
+// Every public response carries the security baseline, the router's own 404
+// included.
+func TestNewHandler_sets_the_security_headers(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]string{
+		"X-Content-Type-Options":  "nosniff",
+		"Cache-Control":           "no-store",
+		"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+		"X-Frame-Options":         "DENY",
+		"Referrer-Policy":         "no-referrer",
+	}
+
+	handler := newHandler(slog.New(slog.DiscardHandler))
+
+	for _, target := range []string{"/foo", "/missing"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil))
+
+		for name, value := range want {
+			assert.Equal(t, value, recorder.Header().Get(name), "%s %s", target, name)
+		}
+	}
+}

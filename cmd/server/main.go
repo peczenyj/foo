@@ -94,11 +94,25 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	return exitOK
 }
 
+// securityHeaders is the security baseline of every public response (the
+// OWASP REST Security Cheat Sheet's): edit it here. HSTS is left to the TLS
+// terminator, which knows whether the client came over HTTPS.
+//
+//nolint:gochecknoglobals // a fixed table, read by newHandler only.
+var securityHeaders = map[string]string{
+	"X-Content-Type-Options":  "nosniff",
+	"Cache-Control":           "no-store",
+	"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+	"X-Frame-Options":         "DENY",
+	"Referrer-Policy":         "no-referrer",
+}
+
 // newHandler returns the public server's handler: the API, which only
 // routes and answers, inside the middlewares that apply to every request,
 // outermost first.
 func newHandler(logger *slog.Logger) http.Handler {
 	return middleware.Chain(api.New(foo.New(), logger),
+		middleware.Headers(securityHeaders),
 		middleware.Metrics(logger, metrics.Expvar()),
 		middleware.Recover(logger),
 	)
