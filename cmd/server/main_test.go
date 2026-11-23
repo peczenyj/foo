@@ -103,6 +103,7 @@ func TestRun_serves_until_cancelled(t *testing.T) {
 	assert.Contains(t, stderr.String(), `"msg":"listening"`)
 	assert.Contains(t, stderr.String(), `"addr":"127.0.0.1:`)
 	assert.NotContains(t, stderr.String(), `"addr":"127.0.0.1:0"`, "must log the bound port, not the requested one")
+	assert.NotContains(t, stderr.String(), "admin listening", "the admin server is off by default")
 }
 
 func TestRun_fails_if_the_address_is_in_use(t *testing.T) {

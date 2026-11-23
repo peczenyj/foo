@@ -28,6 +28,8 @@ const (
 	EnvLogLevel        = envPrefix + "LOG_LEVEL"
 	EnvLogFormat       = envPrefix + "LOG_FORMAT"
 	EnvShutdownTimeout = envPrefix + "SHUTDOWN_TIMEOUT"
+	EnvAdminHost       = envPrefix + "ADMIN_HOST"
+	EnvAdminPort       = envPrefix + "ADMIN_PORT"
 )
 
 // Log formats accepted by Parse.
@@ -40,6 +42,9 @@ const (
 	defaultPort            = 8080
 	defaultShutdownTimeout = 10 * time.Second
 	maxPort                = 65535
+	// adminOff is the admin port that turns the admin server off, the default:
+	// 0 already means "any free port".
+	adminOff = -1
 )
 
 // ErrInvalid is returned, wrapped, for an invalid flag or environment value.
@@ -49,6 +54,8 @@ var ErrInvalid = errors.New("invalid configuration")
 var (
 	errHost            = errors.New("must be a host name or an IP address, without a port (brackets only around IPv6)")
 	errPortRange       = errors.New("must be between 0 and 65535")
+	errAdminPortRange  = errors.New("must be between -1 (off) and 65535")
+	errAdminPortSame   = errors.New("must differ from the port")
 	errLogFormat       = errors.New(`must be "text" or "json"`)
 	errLogLevel        = errors.New("must be debug, info, warn or error")
 	errShutdownTimeout = errors.New("must be positive")
@@ -62,6 +69,9 @@ type Config struct {
 	LogFormat       string        // LogFormatText or LogFormatJSON
 	ShutdownTimeout time.Duration // grace period for in-flight requests
 	ShowVersion     bool          // print the version and exit
+	// The admin server (pprof, expvar), off unless AdminPort is set.
+	AdminHost string // admin listen host, never bracketed; empty means all interfaces
+	AdminPort int    // admin listen port; -1 (the default) turns it off, 0 means any free port
 }
 
 // Default returns the built-in settings.
@@ -72,12 +82,22 @@ func Default() Config {
 		LogLevel:        slog.LevelInfo,
 		LogFormat:       LogFormatText,
 		ShutdownTimeout: defaultShutdownTimeout,
+		AdminHost:       "",
+		AdminPort:       adminOff,
 	}
 }
 
 // Addr returns the listen address, host:port, with an IPv6 host bracketed.
 func (c Config) Addr() string {
 	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
+}
+
+// AdminEnabled reports whether the admin server runs: an admin port is set.
+func (c Config) AdminEnabled() bool { return c.AdminPort != adminOff }
+
+// AdminAddr returns the admin listen address, as Addr does.
+func (c Config) AdminAddr() string {
+	return net.JoinHostPort(c.AdminHost, strconv.Itoa(c.AdminPort))
 }
 
 // Parse reads args (without the program name), using getenv for defaults.
@@ -103,6 +123,10 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 	fs.StringVar(&cfg.LogFormat, "log-format", cfg.LogFormat, "log format: text or json (env "+EnvLogFormat+")")
 	fs.DurationVar(&cfg.ShutdownTimeout, "shutdown-timeout", cfg.ShutdownTimeout,
 		"grace period for in-flight requests on shutdown (env "+EnvShutdownTimeout+")")
+	fs.StringVar(&cfg.AdminHost, "admin-host", cfg.AdminHost,
+		"admin server (pprof, expvar) listen host, empty for all interfaces (env "+EnvAdminHost+")")
+	fs.IntVar(&cfg.AdminPort, "admin-port", cfg.AdminPort,
+		"admin server (pprof, expvar) listen port: -1 turns it off, 0 for any free port (env "+EnvAdminPort+")")
 	fs.BoolVar(&cfg.ShowVersion, "version", false, "print the version and exit")
 
 	report := func(err error) error {
@@ -137,6 +161,10 @@ func Parse(name string, args []string, getenv func(string) string, output io.Wri
 		cfg.Host = host
 	}
 
+	if host, hostErr := parseHost(cfg.AdminHost); hostErr == nil {
+		cfg.AdminHost = host
+	}
+
 	if err := report(errors.Join(envErr, err)); err != nil {
 		return Config{}, err
 	}
@@ -164,6 +192,8 @@ func readEnv(c *Config, getenv func(string) string) []error {
 	parse(EnvLogLevel, setIfValid(&c.LogLevel, parseLevel))
 	parse(EnvLogFormat, setIfValid(&c.LogFormat, checked(asString, checkLogFormat)))
 	parse(EnvShutdownTimeout, setIfValid(&c.ShutdownTimeout, checked(time.ParseDuration, checkShutdownTimeout)))
+	parse(EnvAdminHost, setIfValid(&c.AdminHost, parseHost))
+	parse(EnvAdminPort, setIfValid(&c.AdminPort, checked(strconv.Atoi, checkAdminPort)))
 
 	return errs
 }
@@ -274,6 +304,14 @@ func checkPort(port int) error {
 	return nil
 }
 
+func checkAdminPort(port int) error {
+	if port < adminOff || port > maxPort {
+		return errAdminPortRange
+	}
+
+	return nil
+}
+
 func checkLogFormat(format string) error {
 	if format != LogFormatText && format != LogFormatJSON {
 		return errLogFormat
@@ -320,6 +358,19 @@ func (c Config) validate() error {
 
 	if err := checkShutdownTimeout(c.ShutdownTimeout); err != nil {
 		errs = append(errs, fmt.Errorf("%w: shutdown timeout %v: %w", ErrInvalid, c.ShutdownTimeout, err))
+	}
+
+	if _, err := parseHost(c.AdminHost); err != nil {
+		errs = append(errs, fmt.Errorf("%w: admin host %q: %w", ErrInvalid, c.AdminHost, err))
+	}
+
+	if err := checkAdminPort(c.AdminPort); err != nil {
+		errs = append(errs, fmt.Errorf("%w: admin port %d: %w", ErrInvalid, c.AdminPort, err))
+	}
+
+	// Port 0 is "any free port" for both: two different ports, never the same.
+	if c.AdminPort > 0 && c.AdminPort == c.Port {
+		errs = append(errs, fmt.Errorf("%w: admin port %d: %w", ErrInvalid, c.AdminPort, errAdminPortSame))
 	}
 
 	return errors.Join(errs...)

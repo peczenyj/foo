@@ -120,6 +120,8 @@ even with `-version` (which only skips the required secrets, below).
 | `-log-level` | `FOO_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`, in any case (nothing else: no `info+2`) |
 | `-log-format` | `FOO_LOG_FORMAT` | `text` | `text` or `json` |
 | `-shutdown-timeout` | `FOO_SHUTDOWN_TIMEOUT` | `10s` | grace period for in-flight requests |
+| `-admin-host` | `FOO_ADMIN_HOST` | empty | admin server listen host, as `-host` |
+| `-admin-port` | `FOO_ADMIN_PORT` | `-1` (off) | admin server port: `-1` off, `0` any free port; never the same as `-port` |
 | `-version` | | | print the version and exit |
 
 ### Secrets
@@ -170,6 +172,41 @@ environment (`/proc/<pid>/environ`, `docker inspect`, child processes).
 - File permissions are left to the orchestrator: Kubernetes mounts secrets
   `0644` unless `defaultMode` says otherwise, and Docker often `0444`, so a
   permission warning would fire on most correct deployments.
+
+### Admin server
+
+A second HTTP server, for operators, serves profiling and metrics on a port
+of its own. It is **off by default**: set `-admin-port` or `FOO_ADMIN_PORT`
+to turn it on.
+
+```sh
+FOO_ADMIN_PORT=9090 ./bin/foo
+curl localhost:9090/debug/vars                         # expvar, JSON
+go tool pprof http://localhost:9090/debug/pprof/heap   # memory profile
+go tool pprof 'http://localhost:9090/debug/pprof/profile?seconds=30'
+```
+
+- `GET /debug/vars` (expvar): the Go runtime's `memstats` and `cmdline`, and
+  the service's request metrics, keyed `"<route> <status>"`:
+  `http_requests_total` (count) and `http_request_duration_seconds_total`
+  (summed seconds: divide by the count for the mean). The route is the
+  matched pattern (`GET /foo`, HEAD included) or `unmatched` for the router's
+  404 and 405, never the raw path.
+- `/debug/pprof/` (`net/http/pprof`): the profile index, `cmdline`,
+  `profile`, `symbol`, `trace`, and the named profiles (`heap`, `goroutine`,
+  `allocs`, `block`, `mutex`…).
+- Its own mux, never `http.DefaultServeMux`, and its own write timeout (2
+  minutes, so CPU profiles and traces up to that length work); it shuts down
+  with the public server, and if either fails to start, both stop. A
+  shutdown ends a running CPU profile or trace early (it is still sent,
+  shorter) instead of waiting out its `seconds`.
+- It exposes heap contents and the command line: keep it off the public
+  network (a Kubernetes container port with no Service, `kubectl
+  port-forward`, or `-admin-host=127.0.0.1`).
+- Room for Prometheus: request metrics go through the `metrics.Recorder`
+  interface (`internal/metrics`, implemented with expvar), and
+  `admin.Handle` registers more admin routes, so a `/metrics` endpoint can be
+  added next to `/debug/vars` without touching the handlers.
 
 ## Development
 
@@ -316,9 +353,10 @@ that leaves out what such work doesn't need: mocks (mockery), the hurl suite,
 benchmarks, the OpenAPI spec and its checks, Codecov, release automation and
 Dependabot. It keeps:
 
-- the service: `cmd/server`, `internal/config`, `internal/foo` and
-  `internal/api` with their unit and component tests; the handler tests use
-  a hand-written fake `Fooer` instead of mocks;
+- the service: `cmd/server`, `internal/config`, `internal/foo`,
+  `internal/api`, `internal/admin` and `internal/metrics` with their unit
+  and component tests; the API tests use a hand-written fake `Fooer` instead
+  of mocks;
 - a lite Makefile (`build`, `run`, `test`, `cover`, `lint`, `fmt`, `task`,
   `ci`, `docker`…), whose only tool to install is golangci-lint;
 - `.golangci.lite.yml` as `.golangci.yml`, the Dockerfile, and a lean
