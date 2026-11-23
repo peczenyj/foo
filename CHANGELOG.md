@@ -10,6 +10,8 @@ Released sections are never edited.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-23
+
 - Security response headers (#53) on every public response, the router's
   404 and 405 included: `X-Content-Type-Options: nosniff`,
   `Cache-Control: no-store`, a deny-all `Content-Security-Policy`,
