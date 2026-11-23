@@ -9,6 +9,12 @@ HTTP 200
 [Asserts]
 header "Content-Type" == "application/json"
 jsonpath "$.message" == "bar"
+# The security baseline (cmd/server/main.go securityHeaders).
+header "X-Content-Type-Options" == "nosniff"
+header "Cache-Control" == "no-store"
+header "Content-Security-Policy" == "default-src 'none'; frame-ancestors 'none'"
+header "X-Frame-Options" == "DENY"
+header "Referrer-Policy" == "no-referrer"
 
 # HEAD is served by the GET route: the same headers, no body.
 HEAD {{base_url}}/foo

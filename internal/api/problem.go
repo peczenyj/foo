@@ -6,25 +6,8 @@ import (
 	"net/http"
 
 	"github.com/peczenyj/foo/internal/foo"
+	"github.com/peczenyj/foo/internal/problem"
 )
-
-const (
-	mediaTypeProblem = `application/problem+json`
-	// problemTypeBlank: the problem is fully described by its status code.
-	problemTypeBlank = "about:blank"
-	// detailInternal is the only detail a 5xx response carries: the real
-	// error is logged, never sent.
-	detailInternal = "the server could not complete the request"
-)
-
-// Problem is the body of an error response: RFC 9457 problem details, served
-// as application/problem+json.
-type Problem struct {
-	Type   string `json:"type"`
-	Title  string `json:"title"`
-	Status int    `json:"status"`
-	Detail string `json:"detail,omitempty"`
-}
 
 // problemFor maps an error to the status and detail of its problem response.
 // It is the only place that does: to support a new kind of error, add a typed
@@ -38,7 +21,7 @@ func problemFor(err error) (status int, detail string) {
 	case errors.As(err, &inputErr):
 		return http.StatusBadRequest, inputErr.Detail
 	default:
-		return http.StatusInternalServerError, detailInternal
+		return http.StatusInternalServerError, problem.DetailInternal
 	}
 }
 
@@ -57,15 +40,10 @@ func (a *API) writeError(w http.ResponseWriter, err error) {
 	a.writeProblem(w, status, detail)
 }
 
-// writeProblem writes a problem response with status and detail.
+// writeProblem writes a problem response with status and detail
+// (problem.Write), logging an encoding error as writeBody does.
 func (a *API) writeProblem(w http.ResponseWriter, status int, detail string) {
-	// Like http.Error: browsers must not guess another content type.
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-
-	_ = a.writeBody(w, status, mediaTypeProblem, &Problem{
-		Type:   problemTypeBlank,
-		Title:  http.StatusText(status),
-		Status: status,
-		Detail: detail,
-	})
+	if err := problem.Write(w, status, detail); err != nil {
+		a.logger.Warn("unexpected error while encoding the problem response", slog.Any("error", err))
+	}
 }

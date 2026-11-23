@@ -14,6 +14,7 @@ import (
 
 	"github.com/peczenyj/foo/internal/api"
 	"github.com/peczenyj/foo/internal/foo"
+	"github.com/peczenyj/foo/internal/problem"
 	foomock "github.com/peczenyj/foo/mocks/github.com/peczenyj/foo/foo"
 )
 
@@ -91,12 +92,12 @@ func TestAPI_component_problem(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, status)
 	assert.Equal(t, problemMediaType, headers.Get("Content-Type"))
-	assert.Equal(t, api.Problem{
+	assert.Equal(t, problem.Problem{
 		Type:   "about:blank",
 		Title:  "Internal Server Error",
 		Status: http.StatusInternalServerError,
 		Detail: "the server could not complete the request",
-	}, decodeJSON[api.Problem](t, body))
+	}, decodeJSON[problem.Problem](t, body))
 	assert.NotContains(t, string(body), "secret")
 }
 

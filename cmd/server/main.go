@@ -20,6 +20,7 @@ import (
 	"github.com/peczenyj/foo/internal/config"
 	"github.com/peczenyj/foo/internal/foo"
 	"github.com/peczenyj/foo/internal/metrics"
+	"github.com/peczenyj/foo/internal/middleware"
 )
 
 const (
@@ -84,15 +85,37 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	// signal behaviour: a second SIGINT or SIGTERM kills a shutdown that hangs.
 	context.AfterFunc(ctx, cancel)
 
-	handler := api.New(foo.New(), logger, api.WithRecorder(metrics.Expvar()))
-
-	if err := serveAll(ctx, cfg, handler, logger); err != nil {
+	if err := serveAll(ctx, cfg, newHandler(logger), logger); err != nil {
 		logger.Error("server finished with error", slog.Any("error", err))
 
 		return exitError
 	}
 
 	return exitOK
+}
+
+// securityHeaders is the security baseline of every public response (the
+// OWASP REST Security Cheat Sheet's): edit it here. HSTS is left to the TLS
+// terminator, which knows whether the client came over HTTPS.
+//
+//nolint:gochecknoglobals // a fixed table, read by newHandler only.
+var securityHeaders = map[string]string{
+	"X-Content-Type-Options":  "nosniff",
+	"Cache-Control":           "no-store",
+	"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+	"X-Frame-Options":         "DENY",
+	"Referrer-Policy":         "no-referrer",
+}
+
+// newHandler returns the public server's handler: the API, which only
+// routes and answers, inside the middlewares that apply to every request,
+// outermost first.
+func newHandler(logger *slog.Logger) http.Handler {
+	return middleware.Chain(api.New(foo.New(), logger),
+		middleware.Headers(securityHeaders),
+		middleware.Metrics(logger, metrics.Expvar()),
+		middleware.Recover(logger),
+	)
 }
 
 var (

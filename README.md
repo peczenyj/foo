@@ -20,6 +20,7 @@ Docker and CI.
 | another method on `/foo` or `/healthz` | `405`, plain text, with `Allow: GET, HEAD` |
 | the `Fooer` rejects its input (`*foo.InputError`) | `400` problem; `detail` is the error's `Detail` |
 | the `Fooer` fails | `500` problem; the error is logged, never sent |
+| a handler panics | `500` problem; the panic is logged with its stack |
 
 Errors from `GET /foo` are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
 problem details, `Content-Type: application/problem+json`:
@@ -30,7 +31,8 @@ problem details, `Content-Type: application/problem+json`:
 
 `type` is `about:blank` (the status says it all), `title` is the status
 text. A `4xx` `detail` explains what the client got wrong; a `5xx` `detail`
-is always that generic sentence, and the real error goes to the logs. One
+is always that generic sentence, and the real error goes to the logs. Problem
+responses are written by `problem.Write` (`internal/problem`). One
 function, `problemFor` in `internal/api/problem.go`, maps the errors a
 handler gets from the domain to statuses (`a.writeError(w, err)`): to add a
 case, define a typed error (or a sentinel) and add it there. The client sees
@@ -38,11 +40,35 @@ only the typed error's own field, never `err.Error()`, so context that
 wrappers add on the way up stays in the logs. A handler that validates its
 own request input (query parameters, a body) answers directly with
 `a.writeProblem(w, http.StatusBadRequest, "<what is wrong>")`. Never call
-`http.Error` in a handler. Request bodies are capped at 1 MiB
-(`maxRequestBodyBytes`): reading past it fails with `*http.MaxBytesError`,
-and the connection closes after the response. The router's own
+`http.Error` in a handler. The router's own
 `404` and `405` keep `net/http`'s plain-text body: a catch-all route to turn
 them into problems would also turn every `405` into a `404`.
+
+### Middlewares
+
+The API (`internal/api`) only routes and answers. What applies to every
+request is a middleware (`internal/middleware`), and `newHandler` in
+`cmd/server/main.go` stacks them around the API, outermost first:
+
+1. `Headers` sets the security baseline on every response, the router's
+   404 and 405 included: `X-Content-Type-Options: nosniff`,
+   `Cache-Control: no-store`,
+   `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`,
+   `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`. Edit
+   `securityHeaders` in `cmd/server/main.go` to change it; a handler can
+   still override one for its own response. HSTS is left to whatever
+   terminates TLS.
+2. `Metrics` records each request's route, status and duration (see
+   [Admin server](#admin-server)). It reads the route the router matched
+   from the request once the API returns, so a middleware placed between
+   it and the API must never replace the request (`r.WithContext`,
+   `r.Clone`), or every request is recorded as `unmatched`.
+3. `Recover` answers a panicking handler with a `500` problem and logs the
+   panic with its stack; if the response had already started, it aborts the
+   connection instead.
+
+`Chain(h, a, b, c)` is `a(b(c(h)))`: the list reads in the order a request
+goes through. The admin server has none of them.
 
 ## OpenAPI
 
@@ -221,11 +247,12 @@ go tool pprof 'http://localhost:9090/debug/pprof/profile?seconds=30'
   scraper) behind a NetworkPolicy or firewall: without one, every pod in
   the cluster can reach every pod's ports, Service or not.
 - Room for Prometheus: request metrics go through the `metrics.Recorder`
-  interface (`internal/metrics`, implemented with expvar), each
-  `api.WithRecorder` adds one (expvar keeps recording next to a new
-  backend), and `admin.Handle` registers more admin routes, so a `/metrics`
-  endpoint can be added next to `/debug/vars` without touching the handlers.
-  A request whose handler panics is recorded as a `500`.
+  interface (`internal/metrics`, implemented with expvar), and
+  `middleware.Metrics(logger, recorders...)` records with each one (expvar
+  keeps recording next to a new backend), and `admin.Handle` registers more
+  admin routes, so a `/metrics` endpoint can be added next to `/debug/vars`
+  without touching the handlers. A request whose handler panics is recorded
+  as the `500` that `Recover` sends.
 
 ## Development
 
@@ -373,7 +400,8 @@ benchmarks, the OpenAPI spec and its checks, Codecov, release automation and
 Dependabot. It keeps:
 
 - the service: `cmd/server`, `internal/config`, `internal/foo`,
-  `internal/api`, `internal/admin` and `internal/metrics` with their unit
+  `internal/api`, `internal/problem`, `internal/middleware`,
+  `internal/admin` and `internal/metrics` with their unit
   and component tests; the API tests use a hand-written fake `Fooer` instead
   of mocks;
 - a lite Makefile (`build`, `run`, `test`, `cover`, `lint`, `fmt`, `task`,
@@ -447,8 +475,10 @@ All Go tests use [testify](https://github.com/stretchr/testify).
 
 ### Benchmarks
 
-`BenchmarkAPI_GetFoo` measures the `GET /foo` hot path: routing, the real
-`Fooer` and JSON encoding. Benchmarks are read by people, not judged by CI:
+`BenchmarkHandler_GetFoo` (`cmd/server`) measures the `GET /foo` hot path as
+the binary serves it: the middlewares (headers, metrics with the expvar
+recorder, panic recovery), routing, the real `Fooer` and JSON encoding.
+Benchmarks are read by people, not judged by CI:
 
 - `make bench` runs every benchmark `BENCH_COUNT` times (6) with `-benchmem`
   and summarises time, bytes and allocations per operation with

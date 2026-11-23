@@ -42,11 +42,23 @@ SHARED=(
   internal/metrics/metrics.go
   internal/metrics/metrics_test.go
   internal/metrics/export_test.go
+  internal/middleware/middleware.go
+  internal/middleware/headers.go
+  internal/middleware/status.go
+  internal/middleware/metrics.go
+  internal/middleware/recover.go
+  internal/middleware/export_test.go
+  internal/middleware/chain_test.go
+  internal/middleware/headers_test.go
+  internal/middleware/status_test.go
+  internal/middleware/metrics_test.go
+  internal/middleware/recover_test.go
+  internal/problem/problem.go
+  internal/problem/problem_test.go
   internal/api/handler.go
   internal/api/problem.go
   internal/api/helpers_test.go
   internal/api/export_test.go
-  internal/api/status_test.go
   scripts/check-tool.sh
 )
 

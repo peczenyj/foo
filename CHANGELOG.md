@@ -10,8 +10,16 @@ Released sections are never edited.
 
 ## [Unreleased]
 
-- Request bodies are capped at 1 MiB; a body over the cap closes the
-  connection after the response.
+- Security response headers (#53) on every public response, the router's
+  404 and 405 included: `X-Content-Type-Options: nosniff`,
+  `Cache-Control: no-store`, a deny-all `Content-Security-Policy`,
+  `X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`.
+- A panicking handler is answered with a `500` problem (#53), logged with
+  its stack, instead of a dropped connection.
+- Middlewares (#53): what applies to every request (`Headers`, `Metrics`,
+  `Recover`) moved out of the API into `internal/middleware`, stacked by
+  `newHandler` in `cmd/server`; the API only routes. Problem responses are
+  written by `internal/problem`.
 - A Kubernetes service link in `FOO_PORT` (a Service named `foo`) is ignored
   with a warning instead of stopping the server.
 - Admin server (#4), off by default: `-admin-port`/`FOO_ADMIN_PORT` (`0`: any
@@ -24,10 +32,10 @@ Released sections are never edited.
 - Request metrics in `/debug/vars`: `http_requests_total` and
   `http_request_duration_seconds_total`, keyed by route pattern (or
   `unmatched`) and status, recorded through the `metrics.Recorder` interface
-  (`internal/metrics`, expvar); each `api.WithRecorder` adds a recorder, so
-  another backend can be added later. A panicking request is recorded as a
-  `500`, and streaming, connection hijacking (recorded as `101`) and
-  `sendfile` keep working behind the recorder.
+  (`internal/metrics`, expvar); `middleware.Metrics` records with each
+  recorder it is given, so another backend can be added later. Streaming,
+  connection hijacking (recorded as `101`) and `sendfile` keep working
+  behind it.
 - The "closing server" log line names the address being closed.
 
 ## [0.5.0] - 2026-11-22

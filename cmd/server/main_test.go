@@ -212,3 +212,56 @@ func TestNewHTTPServer_logs_handler_panics_at_error_level(t *testing.T) {
 	assert.Contains(t, logs.String(), "panic serving")
 	assert.Contains(t, logs.String(), "boom")
 }
+
+// The public handler serves the API through its middlewares.
+func TestNewHandler_serves_the_api(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+
+	newHandler(slog.New(slog.DiscardHandler)).
+		ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/foo", nil))
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.JSONEq(t, `{"message":"bar"}`, recorder.Body.String())
+}
+
+// Every public response carries the security baseline, the router's own 404
+// and 405 included.
+func TestNewHandler_sets_the_security_headers(t *testing.T) {
+	t.Parallel()
+
+	want := map[string]string{
+		"X-Content-Type-Options":  "nosniff",
+		"Cache-Control":           "no-store",
+		"Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+		"X-Frame-Options":         "DENY",
+		"Referrer-Policy":         "no-referrer",
+	}
+
+	handler := newHandler(slog.New(slog.DiscardHandler))
+
+	requests := []struct {
+		method, target string
+		status         int
+	}{
+		{method: http.MethodGet, target: "/foo", status: http.StatusOK},
+		{method: http.MethodGet, target: "/missing", status: http.StatusNotFound},
+		{method: http.MethodPost, target: "/foo", status: http.StatusMethodNotAllowed},
+	}
+
+	for _, req := range requests {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), req.method, req.target, nil))
+
+		// The headers as sent: recorder.Header() would also show those set
+		// after the response was written.
+		response := recorder.Result()
+		require.NoError(t, response.Body.Close())
+		require.Equal(t, req.status, response.StatusCode, "%s %s", req.method, req.target)
+
+		for name, value := range want {
+			assert.Equal(t, value, response.Header.Get(name), "%s %s: %s", req.method, req.target, name)
+		}
+	}
+}
