@@ -475,8 +475,10 @@ All Go tests use [testify](https://github.com/stretchr/testify).
 
 ### Benchmarks
 
-`BenchmarkAPI_GetFoo` measures the `GET /foo` hot path: routing, the real
-`Fooer` and JSON encoding. Benchmarks are read by people, not judged by CI:
+`BenchmarkHandler_GetFoo` (`cmd/server`) measures the `GET /foo` hot path as
+the binary serves it: the middlewares (headers, metrics with the expvar
+recorder, panic recovery), routing, the real `Fooer` and JSON encoding.
+Benchmarks are read by people, not judged by CI:
 
 - `make bench` runs every benchmark `BENCH_COUNT` times (6) with `-benchmem`
   and summarises time, bytes and allocations per operation with

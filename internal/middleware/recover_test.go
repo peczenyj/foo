@@ -32,6 +32,14 @@ func newPanicMux() *http.ServeMux {
 		panic("boom")
 	})
 	mux.HandleFunc("GET /abort", func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) })
+	// Headers of a response that never comes: none may reach the 500.
+	mux.HandleFunc("GET /half-built", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		w.Header().Set("Set-Cookie", "session=new")
+		w.Header().Set("Location", "/elsewhere")
+		panic("boom")
+	})
 	mux.HandleFunc("GET /ok", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte("ok"))
@@ -115,6 +123,28 @@ func TestRecover_answers_a_panic_with_500(t *testing.T) {
 	assert.Equal(t, "GET", lines[0]["method"])
 	assert.Equal(t, "GET /panic", lines[0]["route"])
 	assert.Contains(t, lines[0]["stack"], "recover_test.go")
+}
+
+// The 500 carries the headers set before the handler ran (an outer Headers'
+// baseline), not the ones the panicking handler set for its own response: a
+// gzip encoding or a cache lifetime would contradict the problem body.
+func TestRecover_answers_with_the_headers_set_before_the_handler(t *testing.T) {
+	t.Parallel()
+
+	handler := middleware.Chain(newPanicMux(),
+		middleware.Headers(map[string]string{"Cache-Control": "no-store", "X-Frame-Options": "DENY"}),
+		middleware.Recover(slog.New(slog.DiscardHandler)),
+	)
+
+	recorder := recoverRequest(t, handler, "/half-built")
+
+	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+	assert.Equal(t, http.Header{
+		"Cache-Control":          {"no-store"},
+		"X-Frame-Options":        {"DENY"},
+		"Content-Type":           {problem.MediaType},
+		"X-Content-Type-Options": {"nosniff"},
+	}, recorder.Header())
 }
 
 // Once the response has started, no 500 can be sent: the connection is

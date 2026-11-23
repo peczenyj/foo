@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"log/slog"
+	"maps"
 	"net/http"
 	"runtime/debug"
 
@@ -10,7 +11,10 @@ import (
 
 // Recover answers a panicking handler with a 500 problem response
 // (problem.DetailInternal), and logs the panic at error level with its stack,
-// the method and the route.
+// the method and the route. The 500 carries the headers the response had
+// before the handler ran (an outer Headers' baseline), never those the
+// handler set for its own response: a Content-Encoding, a cache lifetime or
+// a cookie would not fit the problem.
 //
 // If the response has already started, no status can follow: the panic is
 // logged and the connection aborted (it re-panics http.ErrAbortHandler,
@@ -23,6 +27,7 @@ func Recover(logger *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sw := wrap(w, logger)
+			before := sw.Header().Clone()
 
 			defer func() {
 				v := recover()
@@ -45,9 +50,9 @@ func Recover(logger *slog.Logger) Middleware {
 					panic(http.ErrAbortHandler)
 				}
 
-				// Set for a body that never comes: the problem's own length
-				// differs.
-				sw.Header().Del("Content-Length")
+				header := sw.Header()
+				clear(header)
+				maps.Copy(header, before)
 
 				if err := problem.Write(sw, http.StatusInternalServerError, problem.DetailInternal); err != nil {
 					logger.Warn("unexpected error while encoding the problem response", slog.Any("error", err))
