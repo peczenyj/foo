@@ -227,7 +227,7 @@ func TestNewHandler_serves_the_api(t *testing.T) {
 }
 
 // Every public response carries the security baseline, the router's own 404
-// included.
+// and 405 included.
 func TestNewHandler_sets_the_security_headers(t *testing.T) {
 	t.Parallel()
 
@@ -241,12 +241,27 @@ func TestNewHandler_sets_the_security_headers(t *testing.T) {
 
 	handler := newHandler(slog.New(slog.DiscardHandler))
 
-	for _, target := range []string{"/foo", "/missing"} {
+	requests := []struct {
+		method, target string
+		status         int
+	}{
+		{method: http.MethodGet, target: "/foo", status: http.StatusOK},
+		{method: http.MethodGet, target: "/missing", status: http.StatusNotFound},
+		{method: http.MethodPost, target: "/foo", status: http.StatusMethodNotAllowed},
+	}
+
+	for _, req := range requests {
 		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil))
+		handler.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), req.method, req.target, nil))
+
+		// The headers as sent: recorder.Header() would also show those set
+		// after the response was written.
+		response := recorder.Result()
+		require.NoError(t, response.Body.Close())
+		require.Equal(t, req.status, response.StatusCode, "%s %s", req.method, req.target)
 
 		for name, value := range want {
-			assert.Equal(t, value, recorder.Header().Get(name), "%s %s", target, name)
+			assert.Equal(t, value, response.Header.Get(name), "%s %s: %s", req.method, req.target, name)
 		}
 	}
 }

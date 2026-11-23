@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/peczenyj/foo/internal/middleware"
 )
@@ -50,8 +51,13 @@ func TestHeaders_sets_each_header_before_the_handler(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, tc.target, nil))
 
+			// The headers as sent: recorder.Header() would also show those
+			// set after the response was written.
+			response := recorder.Result()
+			require.NoError(t, response.Body.Close())
+
 			for name, value := range tc.want {
-				assert.Equal(t, value, recorder.Header().Get(name), name)
+				assert.Equal(t, value, response.Header.Get(name), name)
 			}
 		})
 	}

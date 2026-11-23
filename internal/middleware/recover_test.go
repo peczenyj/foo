@@ -122,7 +122,22 @@ func TestRecover_answers_a_panic_with_500(t *testing.T) {
 	assert.Equal(t, "boom", lines[0]["panic"])
 	assert.Equal(t, "GET", lines[0]["method"])
 	assert.Equal(t, "GET /panic", lines[0]["route"])
-	assert.Contains(t, lines[0]["stack"], "recover_test.go")
+	// The panicking handler's own frame, not just this test's: the stack is
+	// the panic site's.
+	assert.Contains(t, lines[0]["stack"], "middleware_test.newPanicMux.func")
+}
+
+// Behind Metrics, a panic after the response started is recorded with the
+// status that was sent (the connection is aborted, no 500 follows).
+func TestRecover_behind_Metrics_records_the_sent_status_of_an_aborted_response(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.DiscardHandler)
+	recorder := &fakeRecorder{}
+	handler := middleware.Chain(newPanicMux(), middleware.Metrics(logger, recorder), middleware.Recover(logger))
+
+	assert.PanicsWithValue(t, http.ErrAbortHandler, func() { recoverRequest(t, handler, "/partial") })
+	assert.Equal(t, []observation{{route: "GET /partial", status: http.StatusOK}}, recorder.observations)
 }
 
 // The 500 carries the headers set before the handler ran (an outer Headers'
